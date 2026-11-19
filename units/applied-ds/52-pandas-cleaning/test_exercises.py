@@ -22,7 +22,8 @@ class TestLoadCsv(unittest.TestCase):
         csv_data = "id,zip\n1,02108\n2,90210"
         df = m.load_csv(csv_data, dtypes={"zip": str})
         self.assertEqual(df["zip"].iloc[0], "02108")
-        self.assertEqual(df["zip"].dtype, object)  # pandas stores strings as object dtype
+        # Text either way: object in pandas 2, the string dtype in pandas 3.
+        self.assertTrue(pd.api.types.is_string_dtype(df["zip"]))
 
     def test_parse_dates(self):
         csv_data = "id,created_at\n1,2023-01-01 10:00:00\n2,2023-01-02 12:00:00"

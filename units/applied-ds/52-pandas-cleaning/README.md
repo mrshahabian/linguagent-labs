@@ -64,7 +64,7 @@ Avoid mutating `df.columns` in place with fragile manual loops. Instead, write a
 >>> s.dropna().astype(str).str.strip().str.lower().str.replace(r"\s+", " ", regex=True)
 0      new york
 2       chicago
-dtype: object
+dtype: object        (pandas 3 shows: str)
 ```
 
 Categorical text columns often contain dirty strings with inconsistent casing and extra spaces. To group or match these values correctly, you must normalize them. 
