@@ -1,0 +1,96 @@
+{
+ "id": "foundations/data-structures",
+ "title": "Foundations 3 - Core data structures",
+ "track": "foundations",
+ "order": 3,
+ "minutes": 40,
+ "tests": 18,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/foundations/data-structures",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/foundations/03-data-structures/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestFirstAndLast"
+  ],
+  "2": [
+   "TestUniqueSorted"
+  ],
+  "3": [
+   "TestEvensOnly"
+  ],
+  "4": [
+   "TestWordLengths"
+  ],
+  "5": [
+   "TestMergeDicts"
+  ],
+  "6": [
+   "TestGroupByFirstLetter"
+  ]
+ },
+ "sections": {
+  "1": [
+   "first_and_last"
+  ],
+  "2": [
+   "unique_sorted"
+  ],
+  "3": [
+   "evens_only"
+  ],
+  "4": [
+   "word_lengths"
+  ],
+  "5": [
+   "merge_dicts"
+  ],
+  "6": [
+   "group_by_first_letter"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "first_and_last",
+   "test_targets": [
+    "TestFirstAndLast"
+   ],
+   "solution": "def first_and_last(items):\n    \"\"\"Return (first, last) from a non-empty list, using indexing - not\n    len(items) - 1, use -1.\"\"\"\n    return (items[0], items[-1])"
+  },
+  {
+   "name": "unique_sorted",
+   "test_targets": [
+    "TestUniqueSorted"
+   ],
+   "solution": "def unique_sorted(items):\n    \"\"\"Return the distinct values in items, sorted ascending.\"\"\"\n    return sorted(set(items))"
+  },
+  {
+   "name": "evens_only",
+   "test_targets": [
+    "TestEvensOnly"
+   ],
+   "solution": "def evens_only(numbers):\n    \"\"\"Return only the even numbers, in their original order, using a\n    list comprehension.\"\"\"\n    return [n for n in numbers if n % 2 == 0]"
+  },
+  {
+   "name": "word_lengths",
+   "test_targets": [
+    "TestWordLengths"
+   ],
+   "solution": "def word_lengths(words):\n    \"\"\"Return {word: len(word)} for every word, using a dict\n    comprehension.\"\"\"\n    return {word: len(word) for word in words}"
+  },
+  {
+   "name": "merge_dicts",
+   "test_targets": [
+    "TestMergeDicts"
+   ],
+   "solution": "def merge_dicts(a, b):\n    \"\"\"Merge two dicts into a new one. Where a key appears in both, b's\n    value wins. Neither a nor b is modified.\"\"\"\n    merged = dict(a)\n    merged.update(b)\n    return merged"
+  },
+  {
+   "name": "group_by_first_letter",
+   "test_targets": [
+    "TestGroupByFirstLetter"
+   ],
+   "solution": "def group_by_first_letter(words):\n    \"\"\"Group words into {first_letter: [word, ...]}, preserving each\n    word's original relative order within its group.\"\"\"\n    groups = {}\n    for word in words:\n        letter = word[0]\n        if letter not in groups:\n            groups[letter] = []\n        groups[letter].append(word)\n    return groups"
+  }
+ ]
+}

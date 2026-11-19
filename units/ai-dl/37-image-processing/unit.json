@@ -1,0 +1,81 @@
+{
+ "id": "ai-dl/image-processing",
+ "title": "DL 14 - Classical image processing",
+ "track": "ai-dl",
+ "order": 31,
+ "minutes": 50,
+ "tests": 19,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/image-processing",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/37-image-processing/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestGaussianKernel",
+   "TestApplyKernel"
+  ],
+  "2": [
+   "TestSobelEdges"
+  ],
+  "3": [
+   "TestHistogramEqualization"
+  ],
+  "4": [
+   "TestBilinearResize"
+  ]
+ },
+ "sections": {
+  "1": [
+   "gaussian_kernel",
+   "apply_kernel"
+  ],
+  "2": [
+   "sobel_edges"
+  ],
+  "3": [
+   "histogram_equalization"
+  ],
+  "4": [
+   "bilinear_resize"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "gaussian_kernel",
+   "test_targets": [
+    "TestGaussianKernel"
+   ],
+   "solution": "def gaussian_kernel(size, sigma):\n    \"\"\"A (size, size) 2D Gaussian kernel, normalised to sum to 1.\n\n    Separable in principle (a 2D Gaussian is the outer product of two 1D\n    Gaussians, which is why real implementations convolve rows then\n    columns instead of doing the full 2D kernel) - built directly here as\n    a 2D grid for clarity, since the point of this exercise is the shape\n    of the kernel, not the factorisation that makes it fast.\n\n    Normalising to sum 1 is what keeps a blurred image's overall\n    brightness unchanged - an unnormalised kernel would systematically\n    darken or brighten the image depending on whether its sum is below\n    or above 1.\n    \"\"\"\n    half = size // 2\n    coords = torch.arange(size).float() - half\n    grid_y, grid_x = torch.meshgrid(coords, coords, indexing=\"ij\")\n    kernel = torch.exp(-(grid_x ** 2 + grid_y ** 2) / (2 * sigma ** 2))\n    return kernel / kernel.sum()"
+  },
+  {
+   "name": "apply_kernel",
+   "test_targets": [
+    "TestApplyKernel"
+   ],
+   "solution": "def apply_kernel(image, kernel):\n    \"\"\"Convolve a single-channel image with a 2D kernel, same output size.\n\n    Padding by kernel_size // 2 on each side before F.conv2d's default\n    \"valid\" convolution is what makes output size equal input size (a\n    \"same\" convolution) - the same padding arithmetic as module 27's\n    conv_output_size, applied here to make classical filters preserve\n    image dimensions the way every real image-filtering function does.\n    \"\"\"\n    kernel_size = kernel.shape[-1]\n    padding = kernel_size // 2\n    image_batched = image.unsqueeze(0).unsqueeze(0)\n    kernel_batched = kernel.unsqueeze(0).unsqueeze(0)\n    result = F.conv2d(image_batched, kernel_batched, padding=padding)\n    return result.squeeze(0).squeeze(0)"
+  },
+  {
+   "name": "sobel_edges",
+   "test_targets": [
+    "TestSobelEdges"
+   ],
+   "solution": "def sobel_edges(image):\n    \"\"\"Gradient magnitude via the Sobel operator - the classic edge detector.\n\n    Two 3x3 kernels approximate the horizontal and vertical intensity\n    gradient (Gx, Gy) at each pixel; combining them as\n    sqrt(Gx^2 + Gy^2) gives the gradient MAGNITUDE, which is large at an\n    edge (a sharp intensity change in either direction) regardless of the\n    edge's orientation. This is the pre-deep-learning answer to \"where\n    are the edges in this image\" - a fixed, hand-designed filter rather\n    than a learned one.\n\n    Note apply_kernel's zero-padding invents a fake intensity drop at the\n    image border (real pixels next to padded zeros), so even a perfectly\n    flat image shows a false \"edge\" exactly on its border - genuinely\n    zero only in the interior. Every real edge detector has to either\n    accept this border artifact or pad some other way (replicate the\n    edge pixel, mirror the image) to avoid it.\n    \"\"\"\n    gx_kernel = torch.tensor([[-1., 0., 1.], [-2., 0., 2.], [-1., 0., 1.]])\n    gy_kernel = torch.tensor([[-1., -2., -1.], [0., 0., 0.], [1., 2., 1.]])\n    gx = apply_kernel(image, gx_kernel)\n    gy = apply_kernel(image, gy_kernel)\n    return torch.sqrt(gx ** 2 + gy ** 2)"
+  },
+  {
+   "name": "histogram_equalization",
+   "test_targets": [
+    "TestHistogramEqualization"
+   ],
+   "solution": "def histogram_equalization(image):\n    \"\"\"Redistribute a grayscale image's intensities to use the full 0-255 range.\n\n    Built from the image's own cumulative histogram (CDF): a pixel's new\n    value is proportional to what fraction of all pixels are at or below\n    its current value. An image whose intensities are bunched into a\n    narrow band (low contrast) gets that band stretched across the full\n    range, because the CDF rises steeply there - the same amount of\n    \"probability mass\" now spans more output values.\n\n    Subtracting cdf_min (the CDF at the image's own darkest present\n    value) before normalising is what forces the darkest pixel in the\n    image to map to exactly 0, and the brightest to exactly 255 - the\n    standard formula (matching OpenCV's equalizeHist), not just \"roughly\n    stretched.\" Without that subtraction the darkest pixel would map to\n    some value above 0 instead, since its own count is already folded\n    into cdf(v) at v itself.\n\n    image: integer tensor, values in [0, 255].\n    \"\"\"\n    histogram = torch.bincount(image.flatten(), minlength=256).float()\n    cdf = torch.cumsum(histogram, dim=0)\n    cdf_min = cdf[cdf > 0][0]\n    total = image.numel()\n    cdf_normalized = (cdf - cdf_min) / (total - cdf_min)\n    lookup_table = (cdf_normalized * 255).clamp(min=0).round().long()\n    return lookup_table[image.flatten()].reshape(image.shape)"
+  },
+  {
+   "name": "bilinear_resize",
+   "test_targets": [
+    "TestBilinearResize"
+   ],
+   "solution": "def bilinear_resize(image, out_height, out_width):\n    \"\"\"Resize a single-channel image using bilinear interpolation.\n\n    Nearest-neighbour resizing just picks the closest source pixel,\n    which produces visible blockiness when scaling up. Bilinear instead\n    maps each output pixel back to a (fractional) source coordinate and\n    blends the FOUR neighbouring source pixels, weighted by how close\n    the fractional coordinate is to each one - the same shape of\n    interpolation `F.interpolate(mode=\"bilinear\")` does, built here from\n    the coordinate mapping up.\n    \"\"\"\n    in_height, in_width = image.shape\n    image = image.float()\n\n    scale_y = in_height / out_height\n    scale_x = in_width / out_width\n\n    output = torch.zeros(out_height, out_width)\n    for out_y in range(out_height):\n        src_y = (out_y + 0.5) * scale_y - 0.5\n        src_y = max(0.0, min(src_y, in_height - 1))\n        y0 = int(src_y)\n        y1 = min(y0 + 1, in_height - 1)\n        wy = src_y - y0\n\n        for out_x in range(out_width):\n            src_x = (out_x + 0.5) * scale_x - 0.5\n            src_x = max(0.0, min(src_x, in_width - 1))\n            x0 = int(src_x)\n            x1 = min(x0 + 1, in_width - 1)\n            wx = src_x - x0\n\n            top = image[y0, x0] * (1 - wx) + image[y0, x1] * wx\n            bottom = image[y1, x0] * (1 - wx) + image[y1, x1] * wx\n            output[out_y, out_x] = top * (1 - wy) + bottom * wy\n\n    return output"
+  }
+ ]
+}

@@ -1,0 +1,128 @@
+{
+ "id": "ai-dl/attention",
+ "title": "DL 5 - Attention",
+ "track": "ai-dl",
+ "order": 22,
+ "minutes": 60,
+ "tests": 54,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/attention",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/26-attention/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestScaledDotProductAttention"
+  ],
+  "2": [
+   "TestCausalMask",
+   "TestPaddingMask"
+  ],
+  "3": [
+   "TestMultiHeadAttention"
+  ],
+  "4": [
+   "TestKVCache"
+  ],
+  "5": [
+   "TestRoPE"
+  ],
+  "6": [
+   "TestTransformerBlock"
+  ],
+  "7": [
+   "TestAttentionFlops"
+  ]
+ },
+ "sections": {
+  "1": [
+   "scaled_dot_product_attention"
+  ],
+  "2": [
+   "causal_mask",
+   "padding_mask"
+  ],
+  "3": [
+   "MultiHeadAttention"
+  ],
+  "4": [
+   "KVCache"
+  ],
+  "5": [
+   "rope_frequencies",
+   "apply_rope"
+  ],
+  "6": [
+   "TransformerBlock"
+  ],
+  "7": [
+   "attention_flops"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "scaled_dot_product_attention",
+   "test_targets": [
+    "TestScaledDotProductAttention"
+   ],
+   "solution": "def scaled_dot_product_attention(q, k, v, mask=None):\n    \"\"\"Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V.\n\n    q, k, v: (..., L, D) -> (..., L, D), plus the (..., L, S) weights.\n\n    Why sqrt(d_k): q.k is a sum of d_k products of unit-variance terms, so\n    its variance grows like d_k. Without the scale the logits are large,\n    softmax saturates towards one-hot, and its gradient vanishes - the\n    model stops learning at exactly the depth where you need it to.\n\n    `mask` is True where attention is ALLOWED. Excluded logits go to -inf\n    BEFORE the softmax, never zeroed after it.\n    \"\"\"\n    scores = q @ k.transpose(-2, -1) / math.sqrt(q.shape[-1])\n    if mask is not None:\n        scores = scores.masked_fill(~mask, torch.finfo(scores.dtype).min)\n    weights = torch.softmax(scores, dim=-1)\n    return weights @ v, weights"
+  },
+  {
+   "name": "causal_mask",
+   "test_targets": [
+    "TestCausalMask"
+   ],
+   "solution": "def causal_mask(length, device=None):\n    \"\"\"(L, L) boolean mask, True where a query may attend to a key.\n\n    Lower triangular INCLUDING the diagonal: position i sees 0..i. Dropping\n    the diagonal (`diagonal=-1`) stops a token attending to itself and is\n    the classic off-by-one here - training still works, slightly worse, so\n    nothing ever crashes to tell you.\n    \"\"\"\n    return torch.ones(length, length, dtype=torch.bool,\n                      device=device).tril()"
+  },
+  {
+   "name": "padding_mask",
+   "test_targets": [
+    "TestPaddingMask"
+   ],
+   "solution": "def padding_mask(lengths, max_length=None):\n    \"\"\"(B, L) boolean mask, True at real positions and False at padding.\n\n    Built by comparing a row of positions against a column of lengths -\n    the same broadcasting trick as one-hot. Without this, padding tokens\n    contribute to every attention sum and the model learns from them.\n    \"\"\"\n    max_length = int(max_length or lengths.max())\n    positions = torch.arange(max_length, device=lengths.device)\n    return positions[None, :] < lengths[:, None]"
+  },
+  {
+   "name": "MultiHeadAttention",
+   "test_targets": [
+    "TestMultiHeadAttention"
+   ],
+   "solution": "class MultiHeadAttention(nn.Module):\n    \"\"\"Multi-head self-attention.\n\n    The whole idea: instead of one attention over D dimensions, run H\n    attentions over D/H each. Each head can specialise (syntax, position,\n    coreference) and they are concatenated back.\n\n    The shape dance is the part interviewers watch for:\n        (B, L, D) -> (B, L, H, D/H) -> transpose -> (B, H, L, D/H)\n    You must `transpose(1, 2)`, not `view(B, H, L, d)`. A reshape would\n    interleave the heads with the sequence and mix positions together -\n    silently, since the shapes are identical either way.\n    \"\"\"\n\n    def __init__(self, embed_dim, num_heads, bias=True):\n        super().__init__()\n        if embed_dim % num_heads != 0:\n            raise ValueError(\n                f\"embed_dim {embed_dim} not divisible by num_heads {num_heads}\")\n        self.embed_dim = embed_dim\n        self.num_heads = num_heads\n        self.head_dim = embed_dim // num_heads\n        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)\n        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=bias)\n        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=bias)\n        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)\n\n    def _split(self, x):\n        batch, length, _ = x.shape\n        return x.view(batch, length, self.num_heads,\n                      self.head_dim).transpose(1, 2)\n\n    def forward(self, x, mask=None):\n        batch, length, _ = x.shape\n        q = self._split(self.q_proj(x))\n        k = self._split(self.k_proj(x))\n        v = self._split(self.v_proj(x))\n        if mask is not None and mask.dim() == 2:\n            mask = mask[None, None, :, :]   # broadcast over batch and heads\n        out, weights = scaled_dot_product_attention(q, k, v, mask)\n        out = out.transpose(1, 2).reshape(batch, length, self.embed_dim)\n        return self.out_proj(out), weights"
+  },
+  {
+   "name": "KVCache",
+   "test_targets": [
+    "TestKVCache"
+   ],
+   "solution": "class KVCache:\n    \"\"\"Append-only cache of past keys and values for autoregressive decoding.\n\n    Why it exists: generating token N re-attends to all N-1 previous\n    tokens. Recomputing their keys and values every step makes generation\n    O(N^2) in compute; caching them makes each step O(N) and is the single\n    biggest win in LLM inference.\n\n    The cost is memory: 2 * layers * heads * head_dim * seq_len * batch *\n    bytes. That is why serving an LLM is a memory problem before it is a\n    compute problem, and why paged attention exists.\n    \"\"\"\n\n    def __init__(self):\n        self.keys = None\n        self.values = None\n\n    def append(self, k, v):\n        \"\"\"Add this step's k/v and return the full history.\"\"\"\n        if self.keys is None:\n            self.keys, self.values = k, v\n        else:\n            self.keys = torch.cat([self.keys, k], dim=-2)\n            self.values = torch.cat([self.values, v], dim=-2)\n        return self.keys, self.values\n\n    def __len__(self):\n        return 0 if self.keys is None else self.keys.shape[-2]\n\n    def reset(self):\n        self.keys = self.values = None"
+  },
+  {
+   "name": "rope_frequencies",
+   "test_targets": [
+    "TestRoPE"
+   ],
+   "solution": "def rope_frequencies(head_dim, max_length, base=10000.0, device=None):\n    \"\"\"Precompute (cos, sin) tables for rotary position embeddings.\n\n    RoPE encodes position by ROTATING each pair of channels by an angle\n    proportional to the position. Because a rotation is orthogonal, the dot\n    product between two rotated vectors depends only on their RELATIVE\n    offset - which is what attention actually needs, and why RoPE\n    extrapolates to lengths it never saw in training.\n\n    Used by Llama, Mistral, Qwen and most current open models.\n    \"\"\"\n    if head_dim % 2 != 0:\n        raise ValueError(\"head_dim must be even for RoPE\")\n    inverse_freq = 1.0 / (base ** (\n        torch.arange(0, head_dim, 2, device=device).float() / head_dim))\n    positions = torch.arange(max_length, device=device).float()\n    angles = torch.outer(positions, inverse_freq)     # (L, head_dim/2)\n    return angles.cos(), angles.sin()"
+  },
+  {
+   "name": "apply_rope",
+   "test_targets": [
+    "TestRoPE"
+   ],
+   "solution": "def apply_rope(x, cos, sin, offset=0):\n    \"\"\"Rotate x by the precomputed angles. x: (..., L, head_dim).\n\n    `offset` is what makes cached decoding correct: at step N the single\n    new token is at position N, not position 0. Forgetting it is a real\n    and very confusing bug - the model generates fluent text that slowly\n    loses track of where it is.\n    \"\"\"\n    length = x.shape[-2]\n    cos = cos[offset:offset + length]\n    sin = sin[offset:offset + length]\n    first, second = x[..., 0::2], x[..., 1::2]\n    rotated = torch.stack([first * cos - second * sin,\n                           first * sin + second * cos], dim=-1)\n    return rotated.flatten(-2)"
+  },
+  {
+   "name": "TransformerBlock",
+   "test_targets": [
+    "TestTransformerBlock"
+   ],
+   "solution": "class TransformerBlock(nn.Module):\n    \"\"\"Pre-norm transformer block: x + attn(norm(x)), then x + mlp(norm(x)).\n\n    PRE-norm, not post-norm. The original paper put the norm after the\n    residual; pre-norm keeps a clean identity path from input to output, so\n    gradients reach the early layers without a warm-up schedule and deep\n    stacks train stably. Every modern LLM uses it.\n\n    The MLP expands by 4x by convention - most of the parameters in a\n    transformer live here, not in attention.\n    \"\"\"\n\n    def __init__(self, embed_dim, num_heads, mlp_ratio=4, dropout=0.0):\n        super().__init__()\n        self.norm1 = nn.LayerNorm(embed_dim)\n        self.attention = MultiHeadAttention(embed_dim, num_heads)\n        self.norm2 = nn.LayerNorm(embed_dim)\n        self.mlp = nn.Sequential(\n            nn.Linear(embed_dim, embed_dim * mlp_ratio),\n            nn.GELU(),\n            nn.Linear(embed_dim * mlp_ratio, embed_dim),\n            nn.Dropout(dropout),\n        )\n\n    def forward(self, x, mask=None):\n        attended, _ = self.attention(self.norm1(x), mask)\n        x = x + attended\n        return x + self.mlp(self.norm2(x))"
+  },
+  {
+   "name": "attention_flops",
+   "test_targets": [
+    "TestAttentionFlops"
+   ],
+   "solution": "def attention_flops(seq_len, embed_dim, num_heads=1):\n    \"\"\"Multiply-accumulates in one self-attention forward pass.\n\n    Two matmuls dominate: QK^T is L*L*D and (weights @ V) is L*L*D, so the\n    total is 2 * L^2 * D. Splitting into heads does NOT change it - each\n    head is L*L*(D/H) and there are H of them.\n\n    The point is the L^2: doubling the context quadruples attention cost.\n    That single fact motivates FlashAttention, sliding-window attention,\n    and every long-context paper of the last few years.\n    \"\"\"\n    return 2 * seq_len * seq_len * embed_dim"
+  }
+ ]
+}

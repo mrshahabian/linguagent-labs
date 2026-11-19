@@ -1,0 +1,83 @@
+{
+ "id": "foundations/errors-and-tests",
+ "title": "Foundations 6 - Errors, exceptions and your first tests",
+ "track": "foundations",
+ "order": 6,
+ "minutes": 40,
+ "tests": 17,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/foundations/errors-and-tests",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/foundations/06-errors-and-tests/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestSafeDivide"
+  ],
+  "2": [
+   "TestParseInt"
+  ],
+  "3": [
+   "TestValidateAge"
+  ],
+  "4": [
+   "TestWithdrawOrRaise"
+  ],
+  "5": [
+   "TestAverage"
+  ]
+ },
+ "sections": {
+  "1": [
+   "safe_divide"
+  ],
+  "2": [
+   "parse_int"
+  ],
+  "3": [
+   "validate_age"
+  ],
+  "4": [
+   "withdraw_or_raise"
+  ],
+  "5": [
+   "average"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "safe_divide",
+   "test_targets": [
+    "TestSafeDivide"
+   ],
+   "solution": "def safe_divide(a, b):\n    \"\"\"a / b, or None if b is 0 - catch the error instead of crashing.\"\"\"\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None"
+  },
+  {
+   "name": "parse_int",
+   "test_targets": [
+    "TestParseInt"
+   ],
+   "solution": "def parse_int(text):\n    \"\"\"Parse text as an int, or None if it isn't a valid integer.\"\"\"\n    try:\n        return int(text)\n    except ValueError:\n        return None"
+  },
+  {
+   "name": "validate_age",
+   "test_targets": [
+    "TestValidateAge"
+   ],
+   "solution": "def validate_age(age):\n    \"\"\"Return age if it's >= 0, otherwise raise NegativeAgeError with a\n    message that names the bad value.\"\"\"\n    if age < 0:\n        raise NegativeAgeError(f\"age cannot be negative, got {age}\")\n    return age"
+  },
+  {
+   "name": "withdraw_or_raise",
+   "test_targets": [
+    "TestWithdrawOrRaise"
+   ],
+   "solution": "def withdraw_or_raise(balance, amount):\n    \"\"\"Return balance - amount, or raise InsufficientFundsError if amount\n    is more than balance.\"\"\"\n    if amount > balance:\n        raise InsufficientFundsError(\n            f\"cannot withdraw {amount}, balance is only {balance}\"\n        )\n    return balance - amount"
+  },
+  {
+   "name": "average",
+   "test_targets": [
+    "TestAverage"
+   ],
+   "solution": "def average(numbers):\n    \"\"\"The mean of numbers. Raise ValueError with a clear message for an\n    empty list, instead of letting a confusing ZeroDivisionError escape.\"\"\"\n    if not numbers:\n        raise ValueError(\"average() of an empty list is undefined\")\n    return sum(numbers) / len(numbers)"
+  }
+ ]
+}

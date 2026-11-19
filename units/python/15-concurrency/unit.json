@@ -1,0 +1,104 @@
+{
+ "id": "python/concurrency",
+ "title": "Python 6 - Concurrency and async",
+ "track": "python",
+ "order": 13,
+ "minutes": 55,
+ "tests": 34,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/python/concurrency",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/python/15-concurrency/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestGilExplanation"
+  ],
+  "2": [
+   "TestFetchAll"
+  ],
+  "3": [
+   "TestCounter"
+  ],
+  "4": [
+   "TestProducerConsumer"
+  ],
+  "5": [
+   "TestGatherLimited"
+  ],
+  "6": [
+   "TestBatcher"
+  ]
+ },
+ "sections": {
+  "2": [
+   "fetch_all"
+  ],
+  "3": [
+   "Counter"
+  ],
+  "4": [
+   "producer_consumer"
+  ],
+  "5": [
+   "gather_limited",
+   "with_timeout"
+  ],
+  "6": [
+   "Batcher"
+  ],
+  "1": [
+   "cpu_bound_is_not_helped_by_threads"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "fetch_all",
+   "test_targets": [
+    "TestFetchAll"
+   ],
+   "solution": "def fetch_all(urls, fetch, max_workers=8):\n    \"\"\"Call `fetch` on every url concurrently, returning results IN ORDER.\n\n    Threads are the right tool here because `fetch` is assumed to be\n    IO-bound: it releases the GIL while waiting, so the waits overlap.\n\n    Executor.map preserves input order even though completion order varies -\n    which is why you do not need to sort the results yourself.\n    \"\"\"\n    with ThreadPoolExecutor(max_workers=max_workers) as pool:\n        return list(pool.map(fetch, urls))"
+  },
+  {
+   "name": "Counter",
+   "test_targets": [
+    "TestCounter"
+   ],
+   "solution": "class Counter:\n    \"\"\"A counter that stays correct under concurrent increments.\n\n    `self.value += 1` is read-modify-write: three bytecodes with a chance to\n    be interrupted between them. The GIL does NOT make it atomic. A lock -\n    or itertools.count, or a queue - is what makes it safe.\n    \"\"\"\n\n    def __init__(self):\n        self.value = 0\n        self._lock = threading.Lock()\n\n    def increment(self):\n        with self._lock:\n            self.value += 1"
+  },
+  {
+   "name": "producer_consumer",
+   "test_targets": [
+    "TestProducerConsumer"
+   ],
+   "solution": "def producer_consumer(items, work, consumers=4):\n    \"\"\"Push items through `consumers` worker threads; return results unordered.\n\n    A bounded queue applies backpressure: once it is full, producers block\n    instead of buffering the whole input in memory. That is the difference\n    between a pipeline that streams and one that OOMs on a big input.\n    \"\"\"\n    task_queue = queue.Queue(maxsize=consumers * 2)\n    results = []\n    results_lock = threading.Lock()\n    sentinel = object()\n\n    def consume():\n        while True:\n            item = task_queue.get()\n            try:\n                if item is sentinel:\n                    return\n                value = work(item)\n                with results_lock:\n                    results.append(value)\n            finally:\n                task_queue.task_done()\n\n    threads = [threading.Thread(target=consume, daemon=True)\n               for _ in range(consumers)]\n    for thread in threads:\n        thread.start()\n    for item in items:\n        task_queue.put(item)\n    for _ in threads:\n        task_queue.put(sentinel)\n    for thread in threads:\n        thread.join()\n    return results"
+  },
+  {
+   "name": "gather_limited",
+   "test_targets": [
+    "TestGatherLimited"
+   ],
+   "solution": "async def gather_limited(coro_factories, limit):\n    \"\"\"Run coroutines concurrently, at most `limit` at a time, in order.\n\n    asyncio.gather starts *everything* at once. A semaphore is how you cap\n    concurrency - the standard shape for calling a rate-limited API or a\n    GPU-backed service without swamping it.\n\n    Takes factories, not coroutines: a coroutine object can only be awaited\n    once, so the caller cannot safely build them all up front for a retry.\n    \"\"\"\n    semaphore = asyncio.Semaphore(limit)\n\n    async def run(factory):\n        async with semaphore:\n            return await factory()\n\n    return await asyncio.gather(*(run(f) for f in coro_factories))"
+  },
+  {
+   "name": "with_timeout",
+   "test_targets": [
+    "TestWithTimeout"
+   ],
+   "solution": "async def with_timeout(coro, seconds, default=None):\n    \"\"\"Await `coro`, returning `default` if it takes longer than `seconds`.\n\n    asyncio.wait_for cancels the task on timeout - it does not leave it\n    running in the background. Swallowing TimeoutError without cancelling is\n    the usual leak.\n    \"\"\"\n    try:\n        return await asyncio.wait_for(coro, timeout=seconds)\n    except asyncio.TimeoutError:\n        return default"
+  },
+  {
+   "name": "Batcher",
+   "test_targets": [
+    "TestBatcher"
+   ],
+   "solution": "class Batcher:\n    \"\"\"Collects items and flushes them once the batch is full.\n\n    The core of every batched inference server: amortise a fixed per-call\n    cost over many inputs. Real ones also flush on a timer so a partial\n    batch does not wait forever.\n    \"\"\"\n\n    def __init__(self, size, flush):\n        if size <= 0:\n            raise ValueError(\"size must be positive\")\n        self.size = size\n        self.flush_fn = flush\n        self.pending = []\n        self.batches = 0\n\n    def add(self, item):\n        self.pending.append(item)\n        if len(self.pending) >= self.size:\n            return self.flush()\n        return None\n\n    def flush(self):\n        if not self.pending:\n            return None\n        batch, self.pending = self.pending, []\n        self.batches += 1\n        return self.flush_fn(batch)"
+  },
+  {
+   "name": "cpu_bound_is_not_helped_by_threads",
+   "test_targets": [
+    "TestGilExplanation"
+   ],
+   "solution": "def cpu_bound_is_not_helped_by_threads():\n    \"\"\"Return the reason threads do not speed up CPU-bound Python.\n\n    One sentence, because this is an interview answer, not an essay.\n    \"\"\"\n    return (\"The GIL lets only one thread execute Python bytecode at a time, \"\n            \"so CPU-bound work is serialised; use processes instead.\")"
+  }
+ ]
+}

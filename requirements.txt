@@ -1,0 +1,7 @@
+# The PyTorch units need torch; everything else is the standard library and numpy.
+# CPU-only torch is plenty for every exercise here (and much smaller):
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch
+numpy>=1.26
+torch>=2.2
+pytest>=8
+jupyterlab>=4

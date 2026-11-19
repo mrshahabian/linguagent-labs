@@ -1,0 +1,91 @@
+{
+ "id": "ai-dl/efficient-finetuning",
+ "title": "DL 9 - Efficient fine-tuning and inference",
+ "track": "ai-dl",
+ "order": 26,
+ "minutes": 55,
+ "tests": 20,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/efficient-finetuning",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/30-efficient-finetuning/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestLoRALinear"
+  ],
+  "2": [
+   "TestLoRALinear"
+  ],
+  "3": [
+   "TestInt8Quantization"
+  ],
+  "4": [
+   "TestCheckpoint"
+  ],
+  "5": [
+   "TestDynamicBatches"
+  ]
+ },
+ "sections": {
+  "1": [
+   "LoRALinear"
+  ],
+  "3": [
+   "quantize_int8",
+   "dequantize_int8"
+  ],
+  "4": [
+   "Checkpoint",
+   "checkpoint"
+  ],
+  "5": [
+   "dynamic_batches"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "LoRALinear",
+   "test_targets": [
+    "TestLoRALinear"
+   ],
+   "solution": "class LoRALinear(nn.Module):\n    \"\"\"A frozen linear layer plus a trainable low-rank update.\n\n    Full fine-tuning trains every entry of a (out_features, in_features)\n    weight matrix. LoRA instead freezes that matrix entirely and trains\n    two small matrices A (rank x in_features) and B (out_features x rank)\n    whose product B @ A approximates the weight DELTA a full fine-tune\n    would have learned. For rank << min(in_features, out_features), that\n    is a large reduction in trainable parameters and optimizer state -\n    the entire reason LoRA exists.\n\n    B is initialised to zero (A is not) so that at the start of training\n    the LoRA path contributes exactly zero and the model behaves\n    identically to the frozen base model - training begins from the\n    pretrained behaviour, not from a random perturbation of it.\n    \"\"\"\n\n    def __init__(self, base_linear, rank, alpha=1.0):\n        super().__init__()\n        self.base = base_linear\n        for param in self.base.parameters():\n            param.requires_grad_(False)\n        out_features, in_features = self.base.weight.shape\n        self.rank = rank\n        self.scaling = alpha / rank\n        self.lora_A = nn.Parameter(torch.randn(rank, in_features) * 0.01)\n        self.lora_B = nn.Parameter(torch.zeros(out_features, rank))\n\n    def forward(self, x):\n        base_out = self.base(x)\n        lora_out = (x @ self.lora_A.T) @ self.lora_B.T\n        return base_out + self.scaling * lora_out\n\n    def merge(self):\n        \"\"\"Fold the LoRA update into a plain nn.Linear with no LoRA overhead.\n\n        merged_weight = base_weight + scaling * B @ A - the same shape as\n        the base weight, so the merged layer costs nothing extra at\n        inference: no extra matmuls, no extra parameters to load. This is\n        the standard \"merge adapters for deployment\" step, and it is only\n        possible because the LoRA update is linear in x - a non-linear\n        adapter could not be folded into a single matrix this way.\n        \"\"\"\n        merged = nn.Linear(self.base.in_features, self.base.out_features,\n                            bias=self.base.bias is not None)\n        with torch.no_grad():\n            delta = self.scaling * (self.lora_B @ self.lora_A)\n            merged.weight.copy_(self.base.weight + delta)\n            if self.base.bias is not None:\n                merged.bias.copy_(self.base.bias)\n        return merged"
+  },
+  {
+   "name": "quantize_int8",
+   "test_targets": [
+    "TestInt8Quantization"
+   ],
+   "solution": "def quantize_int8(tensor):\n    \"\"\"Symmetric per-tensor int8 quantization. Returns (q_tensor, scale).\n\n    Symmetric means zero maps to zero - no separate zero_point is needed,\n    only a scale. scale is chosen so the tensor's largest-magnitude value\n    maps to +-127 (int8's range is -128..127; 127 is used on both sides\n    to keep the mapping symmetric around zero). Everything in between is\n    rounded to the nearest representable level, which is where\n    quantization error comes from - a value between two levels cannot be\n    represented exactly.\n    \"\"\"\n    max_abs = tensor.abs().max()\n    scale = max_abs / 127 if max_abs > 0 else torch.tensor(1.0)\n    q = torch.clamp(torch.round(tensor / scale), -127, 127).to(torch.int8)\n    return q, scale"
+  },
+  {
+   "name": "dequantize_int8",
+   "test_targets": [
+    "TestInt8Quantization"
+   ],
+   "solution": "def dequantize_int8(q_tensor, scale):\n    \"\"\"Reverse quantize_int8: back to float, with rounding error baked in.\"\"\"\n    return q_tensor.float() * scale"
+  },
+  {
+   "name": "Checkpoint",
+   "test_targets": [
+    "TestCheckpoint"
+   ],
+   "solution": "class Checkpoint(torch.autograd.Function):\n    \"\"\"The mechanism behind torch.utils.checkpoint, written out directly.\n\n    forward() runs under no_grad and returns only the output - the\n    intermediate activations inside `fn` are never saved, only the\n    input. backward() recomputes fn(x) WITH grad tracking enabled just\n    to get those activations back, then runs autograd through that\n    fresh copy to get the gradient. fn(x) therefore runs twice per\n    training step instead of once: more compute, in exchange for not\n    holding fn's internal activations in memory between forward and\n    backward. That trade is the entire point of gradient checkpointing -\n    it turns activation memory into recomputation time, which is\n    normally the cheaper resource to spend when a model barely fits.\n    \"\"\"\n\n    @staticmethod\n    def forward(ctx, fn, x):\n        ctx.fn = fn\n        ctx.save_for_backward(x)\n        with torch.no_grad():\n            return fn(x)\n\n    @staticmethod\n    def backward(ctx, grad_output):\n        (x,) = ctx.saved_tensors\n        x = x.detach().requires_grad_(True)\n        with torch.enable_grad():\n            y = ctx.fn(x)\n        (grad_x,) = torch.autograd.grad(y, x, grad_output)\n        return None, grad_x"
+  },
+  {
+   "name": "checkpoint",
+   "test_targets": [
+    "TestCheckpoint"
+   ],
+   "solution": "def checkpoint(fn, x):\n    \"\"\"Run fn(x) without saving its internal activations for backward.\n\n    A thin wrapper so callers don't need to know Checkpoint.apply's\n    calling convention (autograd.Function.apply does not accept keyword\n    arguments, and the first argument position is reserved).\n    \"\"\"\n    return Checkpoint.apply(fn, x)"
+  },
+  {
+   "name": "dynamic_batches",
+   "test_targets": [
+    "TestDynamicBatches"
+   ],
+   "solution": "def dynamic_batches(arrival_times, max_batch_size, max_wait):\n    \"\"\"Group requests into batches, respecting a size cap AND a wait cap.\n\n    A batch starts forming the moment the first pending request arrives.\n    It flushes the instant EITHER max_batch_size requests have joined it,\n    OR max_wait time has passed since that first arrival - whichever\n    happens first. This is \"dynamic batching\": unlike a fixed-size static\n    batch that always waits for exactly N requests (adding latency for\n    the Nth request under light load), a dynamic batch also flushes on a\n    timeout, so light traffic does not wait indefinitely for a batch that\n    will never fill.\n\n    One simplification worth naming: both conditions are only checked\n    WHEN A NEW REQUEST ARRIVES, since this function has no clock of its\n    own ticking between arrivals. A batch that is one request short of\n    max_batch_size and receives no further requests will not flush until\n    either another request finally arrives (however late) or the input\n    ends. A production batcher needs an actual background timer to\n    guarantee a latency bound on a lone pending request - this models\n    the grouping decision, not the timer that would drive it live.\n\n    Returns a list of batches, each a list of the original indices of\n    the requests it contains, in arrival order.\n    \"\"\"\n    batches = []\n    current = []\n    batch_start = None\n    for index, arrival in enumerate(arrival_times):\n        if not current:\n            batch_start = arrival\n        current.append(index)\n        if len(current) >= max_batch_size or (arrival - batch_start) >= max_wait:\n            batches.append(current)\n            current = []\n            batch_start = None\n    if current:\n        batches.append(current)\n    return batches"
+  }
+ ]
+}

@@ -1,0 +1,90 @@
+{
+ "id": "ai-dl/yolo",
+ "title": "DL 13 - Grid and anchor-based detection (YOLO)",
+ "track": "ai-dl",
+ "order": 30,
+ "minutes": 55,
+ "tests": 20,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/yolo",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/36-yolo/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestEncodeGridTargets"
+  ],
+  "2": [
+   "TestDecodeGridPredictions"
+  ],
+  "3": [
+   "TestBestAnchorForBox"
+  ],
+  "4": [
+   "TestYoloLossComponents"
+  ],
+  "5": [
+   "TestMatchDetectionsToGroundTruth"
+  ]
+ },
+ "sections": {
+  "1": [
+   "encode_grid_targets"
+  ],
+  "2": [
+   "decode_grid_predictions"
+  ],
+  "3": [
+   "best_anchor_for_box"
+  ],
+  "4": [
+   "yolo_loss_components"
+  ],
+  "5": [
+   "match_detections_to_ground_truth"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "encode_grid_targets",
+   "test_targets": [
+    "TestEncodeGridTargets"
+   ],
+   "solution": "def encode_grid_targets(boxes, class_ids, grid_size, img_size, num_classes):\n    \"\"\"Encode ground-truth boxes into a (grid_size, grid_size, 5+num_classes) tensor.\n\n    YOLO's central idea: divide the image into a grid_size x grid_size\n    grid: whichever cell contains a box's CENTER is the one cell\n    \"responsible\" for predicting it - not every cell that overlaps it.\n    That cell's slot becomes [objectness=1, x, y, w, h, one-hot class],\n    where x, y are the center's offset WITHIN the cell (0 to 1, not\n    absolute pixels) and w, h are the box's width/height as a fraction of\n    the whole image. Cells with no assigned box are left at all zero,\n    which is exactly what makes objectness=0 the right \"no object here\"\n    signal for the loss to train against.\n\n    boxes: (N, 4) in (x1, y1, x2, y2) absolute pixel coordinates.\n    class_ids: (N,) integer class index per box.\n    \"\"\"\n    target = torch.zeros(grid_size, grid_size, 5 + num_classes)\n    cell_size = img_size / grid_size\n\n    for box, class_id in zip(boxes, class_ids):\n        x1, y1, x2, y2 = box\n        center_x, center_y = (x1 + x2) / 2, (y1 + y2) / 2\n        col = min(int(center_x / cell_size), grid_size - 1)\n        row = min(int(center_y / cell_size), grid_size - 1)\n\n        x_offset = (center_x - col * cell_size) / cell_size\n        y_offset = (center_y - row * cell_size) / cell_size\n        width = (x2 - x1) / img_size\n        height = (y2 - y1) / img_size\n\n        target[row, col, 0] = 1.0\n        target[row, col, 1] = x_offset\n        target[row, col, 2] = y_offset\n        target[row, col, 3] = width\n        target[row, col, 4] = height\n        target[row, col, 5 + int(class_id)] = 1.0\n\n    return target"
+  },
+  {
+   "name": "decode_grid_predictions",
+   "test_targets": [
+    "TestDecodeGridPredictions"
+   ],
+   "solution": "def decode_grid_predictions(grid_output, grid_size, img_size, conf_threshold):\n    \"\"\"Reverse encode_grid_targets: grid tensor -> list of (box, confidence, class).\n\n    Only cells with objectness above conf_threshold produce a detection -\n    most of a grid is \"no object here\" for any real image, which is\n    exactly the class imbalance yolo_loss_components has to account for.\n    Converts each surviving cell's relative (x, y, w, h) back to absolute\n    (x1, y1, x2, y2) pixel coordinates, and reports the class with the\n    highest score in that cell.\n\n    Returns a list of (box_tensor, confidence, class_id) tuples, one per\n    detection, in row-major cell order.\n    \"\"\"\n    cell_size = img_size / grid_size\n    detections = []\n\n    for row in range(grid_size):\n        for col in range(grid_size):\n            cell = grid_output[row, col]\n            confidence = cell[0].item()\n            if confidence <= conf_threshold:\n                continue\n\n            x_offset, y_offset, width, height = cell[1:5]\n            center_x = (col + x_offset) * cell_size\n            center_y = (row + y_offset) * cell_size\n            box_width = width * img_size\n            box_height = height * img_size\n\n            box = torch.tensor([\n                center_x - box_width / 2,\n                center_y - box_height / 2,\n                center_x + box_width / 2,\n                center_y + box_height / 2,\n            ])\n            class_id = int(torch.argmax(cell[5:]))\n            detections.append((box, confidence, class_id))\n\n    return detections"
+  },
+  {
+   "name": "best_anchor_for_box",
+   "test_targets": [
+    "TestBestAnchorForBox"
+   ],
+   "solution": "def best_anchor_for_box(box_wh, anchor_whs):\n    \"\"\"Pick the anchor whose SHAPE best matches box_wh, ignoring position.\n\n    YOLOv2/v3 assign a ground-truth box to whichever of several predefined\n    anchor shapes (typical width/height ratios, chosen up front by\n    clustering the training set's boxes) it resembles most - not by IoU at\n    the box's actual location, but by IoU as if both the box and every\n    anchor were centered at the same point. This decouples \"what shape is\n    this object\" from \"where is it\", so an anchor tuned for tall, narrow\n    boxes (a person) doesn't compete unfairly with one tuned for wide,\n    short boxes (a car) just because of where either happens to sit in the\n    image.\n    \"\"\"\n    box_w, box_h = box_wh\n    box_area = box_w * box_h\n    best_index, best_iou = 0, -1.0\n\n    for index, (anchor_w, anchor_h) in enumerate(anchor_whs):\n        inter_w = min(box_w, anchor_w)\n        inter_h = min(box_h, anchor_h)\n        intersection = inter_w * inter_h\n        anchor_area = anchor_w * anchor_h\n        union = box_area + anchor_area - intersection\n        iou = intersection / union if union > 0 else 0.0\n        if iou > best_iou:\n            best_index, best_iou = index, iou\n\n    return best_index"
+  },
+  {
+   "name": "yolo_loss_components",
+   "test_targets": [
+    "TestYoloLossComponents"
+   ],
+   "solution": "def yolo_loss_components(pred, target, lambda_coord=5.0, lambda_noobj=0.5):\n    \"\"\"The three weighted pieces of the YOLO loss, summed.\n\n    A grid is mostly empty - most cells have no object in them - so a\n    naive sum-of-squared-errors loss would be dominated by driving every\n    empty cell's confidence to exactly zero, drowning out the (rarer, more\n    important) signal from cells that DO contain an object. Two\n    hyperparameters fix the imbalance in opposite directions:\n\n      lambda_coord (>1): amplify the box-coordinate loss, since getting a\n      real object's box right matters more than the raw squared-error\n      scale would suggest.\n\n      lambda_noobj (<1): shrink the confidence loss for cells with no\n      object, so their sheer numerical majority doesn't dominate training.\n\n    Both masks come from target's own objectness channel - only cells\n    where target[..., 0] == 1 contribute coordinate and class loss; every\n    cell contributes objectness loss, split into the responsible and\n    not-responsible masks.\n    \"\"\"\n    obj_mask = target[..., 0] == 1\n    noobj_mask = ~obj_mask\n\n    coord_loss = lambda_coord * torch.sum(\n        (pred[obj_mask][:, 1:5] - target[obj_mask][:, 1:5]) ** 2\n    )\n    obj_loss = torch.sum((pred[obj_mask][:, 0] - target[obj_mask][:, 0]) ** 2)\n    noobj_loss = lambda_noobj * torch.sum(\n        (pred[noobj_mask][:, 0] - target[noobj_mask][:, 0]) ** 2\n    )\n    class_loss = torch.sum((pred[obj_mask][:, 5:] - target[obj_mask][:, 5:]) ** 2)\n\n    return {\n        \"coord\": coord_loss,\n        \"obj\": obj_loss,\n        \"noobj\": noobj_loss,\n        \"class\": class_loss,\n        \"total\": coord_loss + obj_loss + noobj_loss + class_loss,\n    }"
+  },
+  {
+   "name": "_iou_xyxy",
+   "test_targets": [],
+   "solution": "def _iou_xyxy(box_a, box_b):\n    \"\"\"Single-pair IoU, (x1, y1, x2, y2) format - the same formula as\n    module 27's box_iou, not a batched (N, M) version, since greedy\n    matching below only ever needs one prediction against one ground\n    truth at a time.\"\"\"\n    x1 = max(box_a[0].item(), box_b[0].item())\n    y1 = max(box_a[1].item(), box_b[1].item())\n    x2 = min(box_a[2].item(), box_b[2].item())\n    y2 = min(box_a[3].item(), box_b[3].item())\n    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)\n    area_a = (box_a[2] - box_a[0]).item() * (box_a[3] - box_a[1]).item()\n    area_b = (box_b[2] - box_b[0]).item() * (box_b[3] - box_b[1]).item()\n    union = area_a + area_b - intersection\n    return intersection / union if union > 0 else 0.0"
+  },
+  {
+   "name": "match_detections_to_ground_truth",
+   "test_targets": [
+    "TestMatchDetectionsToGroundTruth"
+   ],
+   "solution": "def match_detections_to_ground_truth(detections, ground_truth_boxes, iou_threshold=0.5):\n    \"\"\"Greedily match predictions to ground truth for a mAP-style evaluation.\n\n    Detections are matched HIGHEST CONFIDENCE FIRST, and each ground-truth\n    box can be claimed by at most one detection - a second detection that\n    also overlaps an already-claimed box is a false positive, even at\n    high IoU, because in a real detector it would be a duplicate the\n    model should have suppressed itself (this is why NMS runs before\n    evaluation, not just before display). This is the step module 32's\n    average_precision doesn't include on its own: turning raw\n    (box, confidence) detections into the (confidence, is_correct) pairs\n    average_precision actually consumes.\n\n    detections: list of (box, confidence, class_id), any order.\n    Returns (confidences, labels) - labels[i] is 1 if detections[i] (after\n    sorting by confidence) was matched to an unclaimed ground-truth box\n    above iou_threshold, else 0.\n    \"\"\"\n    ordered = sorted(detections, key=lambda d: d[1], reverse=True)\n    claimed = [False] * len(ground_truth_boxes)\n    confidences, labels = [], []\n\n    for box, confidence, _class_id in ordered:\n        best_index, best_iou = -1, iou_threshold\n        for gt_index, gt_box in enumerate(ground_truth_boxes):\n            if claimed[gt_index]:\n                continue\n            iou = _iou_xyxy(box, gt_box)\n            if iou > best_iou:\n                best_index, best_iou = gt_index, iou\n\n        confidences.append(confidence)\n        if best_index >= 0:\n            claimed[best_index] = True\n            labels.append(1)\n        else:\n            labels.append(0)\n\n    return confidences, labels"
+  }
+ ]
+}

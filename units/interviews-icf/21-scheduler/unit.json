@@ -1,0 +1,12 @@
+{
+ "id": "icf/scheduler",
+ "title": "Unit 3 - Build from a spec II",
+ "track": "icf",
+ "order": 37,
+ "minutes": 90,
+ "tests": 40,
+ "kind": "project",
+ "app": "https://linguagent.com/courses/icf/scheduler",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interviews-icf/21-scheduler/lab.ipynb",
+ "needs": []
+}

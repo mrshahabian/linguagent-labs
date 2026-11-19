@@ -1,0 +1,85 @@
+{
+ "id": "ai-dl/optimizers",
+ "title": "DL 8 - Optimizers and learning-rate schedules",
+ "track": "ai-dl",
+ "order": 25,
+ "minutes": 50,
+ "tests": 20,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/optimizers",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/29-optimizers/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestSgdMomentumStep"
+  ],
+  "2": [
+   "TestAdamStep"
+  ],
+  "3": [
+   "TestAdamwStep"
+  ],
+  "4": [
+   "TestCosineWarmupLr"
+  ],
+  "5": [
+   "TestClipGradNorm"
+  ]
+ },
+ "sections": {
+  "1": [
+   "sgd_momentum_step"
+  ],
+  "2": [
+   "adam_step"
+  ],
+  "3": [
+   "adamw_step"
+  ],
+  "4": [
+   "cosine_warmup_lr"
+  ],
+  "5": [
+   "clip_grad_norm_"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "sgd_momentum_step",
+   "test_targets": [
+    "TestSgdMomentumStep"
+   ],
+   "solution": "def sgd_momentum_step(param, grad, velocity, lr, momentum):\n    \"\"\"One step of SGD with classic (heavy-ball) momentum.\n\n    velocity accumulates a decaying running average of past gradients, so\n    the update keeps moving in a direction that has been consistently\n    downhill even where the CURRENT gradient is small or noisy - this is\n    what carries a run through flat regions and damps oscillation across\n    narrow ravines, both of which plain SGD handles badly.\n\n    Returns (new_param, new_velocity); does not mutate its inputs, so a\n    caller decides when to commit the update.\n    \"\"\"\n    new_velocity = momentum * velocity + grad\n    new_param = param - lr * new_velocity\n    return new_param, new_velocity"
+  },
+  {
+   "name": "adam_step",
+   "test_targets": [
+    "TestAdamStep"
+   ],
+   "solution": "def adam_step(param, grad, m, v, t, lr=1e-3, beta1=0.9, beta2=0.999, eps=1e-8):\n    \"\"\"One step of Adam (no weight decay). Returns (new_param, new_m, new_v).\n\n    m and v are exponential moving averages of the gradient and its\n    square - a per-parameter estimate of the gradient's mean and\n    variance. Dividing by sqrt(v) is what makes Adam's effective step\n    size roughly uniform across parameters regardless of how differently\n    scaled their raw gradients are.\n\n    Bias correction (dividing by 1 - beta**t) matters most in the first\n    few steps: m and v start at zero, so the raw moving averages are\n    biased toward zero until enough steps have accumulated to wash that\n    initialization out. Skipping it makes early steps far too small.\n    \"\"\"\n    new_m = beta1 * m + (1 - beta1) * grad\n    new_v = beta2 * v + (1 - beta2) * grad * grad\n    m_hat = new_m / (1 - beta1 ** t)\n    v_hat = new_v / (1 - beta2 ** t)\n    new_param = param - lr * m_hat / (v_hat.sqrt() + eps)\n    return new_param, new_m, new_v"
+  },
+  {
+   "name": "adamw_step",
+   "test_targets": [
+    "TestAdamwStep"
+   ],
+   "solution": "def adamw_step(param, grad, m, v, t, lr=1e-3, beta1=0.9, beta2=0.999,\n                eps=1e-8, weight_decay=0.01):\n    \"\"\"One step of AdamW: Adam with DECOUPLED weight decay.\n\n    The naive way to add L2 regularisation to Adam is to fold it into the\n    gradient before the moment estimates see it: `grad = grad +\n    weight_decay * param`. That is what plain `torch.optim.Adam(...,\n    weight_decay=...)` does, and it is subtly wrong for an adaptive\n    optimizer - the decay term then gets divided by sqrt(v) along with\n    the real gradient, so parameters with large gradient variance are\n    decayed LESS, which was never the intent of weight decay.\n\n    AdamW instead applies the decay directly to the parameter, entirely\n    outside the adaptive (m, v) machinery:\n\n        param <- param - lr * (m_hat / (sqrt(v_hat) + eps) + weight_decay * param)\n\n    so every parameter is decayed by the same proportion regardless of\n    its gradient statistics - decoupled from the adaptive step.\n    \"\"\"\n    new_m = beta1 * m + (1 - beta1) * grad\n    new_v = beta2 * v + (1 - beta2) * grad * grad\n    m_hat = new_m / (1 - beta1 ** t)\n    v_hat = new_v / (1 - beta2 ** t)\n    new_param = param - lr * (m_hat / (v_hat.sqrt() + eps) + weight_decay * param)\n    return new_param, new_m, new_v"
+  },
+  {
+   "name": "cosine_warmup_lr",
+   "test_targets": [
+    "TestCosineWarmupLr"
+   ],
+   "solution": "def cosine_warmup_lr(step, total_steps, warmup_steps, base_lr, min_lr=0.0):\n    \"\"\"The learning rate at `step`: linear warmup, then cosine decay to min_lr.\n\n    Warmup exists because Adam's early steps are the least trustworthy\n    ones - the moment estimates m and v are still close to their\n    zero initialisation, so a large step right away can push a randomly\n    initialised model somewhere the optimizer never recovers from cheaply.\n    Ramping the LR up linearly over the first `warmup_steps` steps instead\n    of starting at full strength avoids that.\n\n    Cosine decay after warmup falls smoothly to min_lr rather than\n    stepping down abruptly - shown empirically to out-perform a hard\n    step schedule across most training runs, and it has no extra\n    hyperparameter beyond \"when does training end.\"\n    \"\"\"\n    if step < warmup_steps:\n        return base_lr * step / max(warmup_steps, 1)\n    if step >= total_steps:\n        return min_lr\n    progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)\n    cosine = 0.5 * (1 + math.cos(math.pi * progress))\n    return min_lr + (base_lr - min_lr) * cosine"
+  },
+  {
+   "name": "clip_grad_norm_",
+   "test_targets": [
+    "TestClipGradNorm"
+   ],
+   "solution": "def clip_grad_norm_(grads, max_norm):\n    \"\"\"Clip a list of gradient tensors IN PLACE by their combined global norm.\n\n    The global norm treats every tensor in `grads` as one big flattened\n    vector - it is the norm of the CONCATENATION, not the max or sum of\n    each tensor's own norm. Scaling every tensor by the same factor\n    `max_norm / total_norm` (only when the total exceeds max_norm)\n    preserves the gradient's direction across all parameters jointly;\n    clipping each tensor independently would not.\n\n    Returns the total norm BEFORE clipping, exactly like\n    torch.nn.utils.clip_grad_norm_ - useful for logging when clipping is\n    actually triggering.\n    \"\"\"\n    total_norm = torch.sqrt(sum((g ** 2).sum() for g in grads))\n    clip_coef = max_norm / (total_norm + 1e-6)\n    if clip_coef < 1:\n        for g in grads:\n            g.mul_(clip_coef)\n    return total_norm"
+  }
+ ]
+}

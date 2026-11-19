@@ -1,0 +1,115 @@
+{
+ "id": "python/performance",
+ "title": "Python 5 - Performance and memory",
+ "track": "python",
+ "order": 12,
+ "minutes": 50,
+ "tests": 32,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/python/performance",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/python/14-performance/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestCommonElements"
+  ],
+  "2": [
+   "TestJoinWords"
+  ],
+  "3": [
+   "TestCollatz"
+  ],
+  "4": [
+   "TestRunningMax"
+  ],
+  "5": [
+   "TestRankByFrequency"
+  ],
+  "6": [
+   "k:total_size"
+  ],
+  "7": [
+   "TestSlots"
+  ]
+ },
+ "sections": {
+  "1": [
+   "common_elements"
+  ],
+  "2": [
+   "join_words"
+  ],
+  "3": [
+   "collatz_length"
+  ],
+  "4": [
+   "running_max",
+   "insert_sorted"
+  ],
+  "5": [
+   "rank_by_frequency"
+  ],
+  "6": [
+   "total_size",
+   "first_match"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "common_elements",
+   "test_targets": [
+    "TestCommonElements"
+   ],
+   "solution": "def common_elements(a, b):\n    \"\"\"Elements of `a` that also appear in `b`, in a's order, deduplicated.\n\n    The point: converting b to a set turns an O(n*m) scan into O(n+m).\n    `x in list` is a linear scan; `x in set` is a hash lookup.\n    \"\"\"\n    lookup = set(b)\n    seen = set()\n    out = []\n    for item in a:\n        if item in lookup and item not in seen:\n            seen.add(item)\n            out.append(item)\n    return out"
+  },
+  {
+   "name": "join_words",
+   "test_targets": [
+    "TestJoinWords"
+   ],
+   "solution": "def join_words(words, separator=\" \"):\n    \"\"\"Join words without quadratic string concatenation.\n\n    `result += word` in a loop rebuilds the whole string each time, because\n    str is immutable - O(n^2) total. str.join sizes the buffer once.\n    \"\"\"\n    return separator.join(words)"
+  },
+  {
+   "name": "collatz_length",
+   "test_targets": [
+    "TestCollatz"
+   ],
+   "solution": "@functools.lru_cache(maxsize=None)\ndef collatz_length(n):\n    \"\"\"Number of steps for n to reach 1 under the Collatz map.\n\n    Memoised: the recursion revisits the same values constantly, so caching\n    turns an exponential-looking workload into a linear one.\n    \"\"\"\n    if n == 1:\n        return 1\n    if n % 2 == 0:\n        return 1 + collatz_length(n // 2)\n    return 1 + collatz_length(3 * n + 1)"
+  },
+  {
+   "name": "running_max",
+   "test_targets": [
+    "TestRunningMax"
+   ],
+   "solution": "def running_max(values, window):\n    \"\"\"Maximum of each sliding window of `window` values.\n\n    A deque of *indices* kept in decreasing value order gives O(n) total:\n    each index is pushed and popped at most once. The naive max() per window\n    is O(n * window).\n    \"\"\"\n    if window <= 0:\n        raise ValueError(\"window must be positive\")\n    out = []\n    candidates = deque()\n    for index, value in enumerate(values):\n        # Drop indices that have fallen out of the window on the left.\n        while candidates and candidates[0] <= index - window:\n            candidates.popleft()\n        # Anything smaller than the incoming value can never be a max again.\n        while candidates and values[candidates[-1]] <= value:\n            candidates.pop()\n        candidates.append(index)\n        if index >= window - 1:\n            out.append(values[candidates[0]])\n    return out"
+  },
+  {
+   "name": "insert_sorted",
+   "test_targets": [
+    "TestInsertSorted"
+   ],
+   "solution": "def insert_sorted(sorted_list, value):\n    \"\"\"Insert into an already-sorted list, keeping it sorted.\n\n    bisect.insort finds the position in O(log n) instead of re-sorting the\n    whole list in O(n log n) after every append.\n    \"\"\"\n    bisect.insort(sorted_list, value)\n    return sorted_list"
+  },
+  {
+   "name": "rank_by_frequency",
+   "test_targets": [
+    "TestRankByFrequency"
+   ],
+   "solution": "def rank_by_frequency(items, limit=None):\n    \"\"\"(item, count) pairs, most frequent first, ties alphabetically.\n\n    Counter.most_common does not define tie order, so sort explicitly when\n    the tie-break matters.\n    \"\"\"\n    counts = Counter(items)\n    ranked = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))\n    return ranked[:limit] if limit is not None else ranked"
+  },
+  {
+   "name": "total_size",
+   "test_targets": [
+    "TestStreaming"
+   ],
+   "solution": "def total_size(rows):\n    \"\"\"Sum the \"size\" field of every row, without building an intermediate list.\n\n    A generator expression inside sum() streams; a list comprehension\n    materialises every value first. Same result, constant memory instead of\n    O(n).\n    \"\"\"\n    return sum(row[\"size\"] for row in rows)"
+  },
+  {
+   "name": "first_match",
+   "test_targets": [
+    "TestStreaming"
+   ],
+   "solution": "def first_match(rows, predicate):\n    \"\"\"The first row satisfying predicate, or None.\n\n    next() over a generator stops at the first hit. Filtering into a list\n    and taking [0] evaluates the predicate for every row.\n    \"\"\"\n    return next((row for row in rows if predicate(row)), None)"
+  }
+ ]
+}

@@ -1,0 +1,96 @@
+{
+ "id": "foundations/syntax",
+ "title": "Foundations 1 - Syntax, values and control flow",
+ "track": "foundations",
+ "order": 1,
+ "minutes": 30,
+ "tests": 23,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/foundations/syntax",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/foundations/01-syntax/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestClassifyNumber"
+  ],
+  "2": [
+   "TestFizzbuzz"
+  ],
+  "3": [
+   "TestCountVowels"
+  ],
+  "4": [
+   "TestGradeForScore"
+  ],
+  "5": [
+   "TestSumUpTo"
+  ],
+  "6": [
+   "TestIsLeapYear"
+  ]
+ },
+ "sections": {
+  "1": [
+   "classify_number"
+  ],
+  "2": [
+   "fizzbuzz"
+  ],
+  "3": [
+   "count_vowels"
+  ],
+  "4": [
+   "grade_for_score"
+  ],
+  "5": [
+   "sum_up_to"
+  ],
+  "6": [
+   "is_leap_year"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "classify_number",
+   "test_targets": [
+    "TestClassifyNumber"
+   ],
+   "solution": "def classify_number(n):\n    \"\"\"Return \"negative\", \"zero\" or \"positive\".\"\"\"\n    if n < 0:\n        return \"negative\"\n    elif n == 0:\n        return \"zero\"\n    else:\n        return \"positive\""
+  },
+  {
+   "name": "fizzbuzz",
+   "test_targets": [
+    "TestFizzbuzz"
+   ],
+   "solution": "def fizzbuzz(n):\n    \"\"\"Return [\"1\", \"2\", \"Fizz\", \"4\", \"Buzz\", ...] up to and including n.\"\"\"\n    out = []\n    for i in range(1, n + 1):\n        if i % 15 == 0:\n            out.append(\"FizzBuzz\")\n        elif i % 3 == 0:\n            out.append(\"Fizz\")\n        elif i % 5 == 0:\n            out.append(\"Buzz\")\n        else:\n            out.append(str(i))\n    return out"
+  },
+  {
+   "name": "count_vowels",
+   "test_targets": [
+    "TestCountVowels"
+   ],
+   "solution": "def count_vowels(word):\n    \"\"\"Count the vowels (a, e, i, o, u, either case) in word.\"\"\"\n    count = 0\n    for ch in word:\n        if ch in \"aeiouAEIOU\":\n            count += 1\n    return count"
+  },
+  {
+   "name": "grade_for_score",
+   "test_targets": [
+    "TestGradeForScore"
+   ],
+   "solution": "def grade_for_score(score):\n    \"\"\"Map a 0-100 score to a letter grade: A >= 90, B >= 80, C >= 70,\n    D >= 60, else F.\"\"\"\n    if score >= 90:\n        return \"A\"\n    elif score >= 80:\n        return \"B\"\n    elif score >= 70:\n        return \"C\"\n    elif score >= 60:\n        return \"D\"\n    else:\n        return \"F\""
+  },
+  {
+   "name": "sum_up_to",
+   "test_targets": [
+    "TestSumUpTo"
+   ],
+   "solution": "def sum_up_to(n):\n    \"\"\"Sum every integer from 1 to n inclusive, using a while loop.\"\"\"\n    total = 0\n    i = 1\n    while i <= n:\n        total += i\n        i += 1\n    return total"
+  },
+  {
+   "name": "is_leap_year",
+   "test_targets": [
+    "TestIsLeapYear"
+   ],
+   "solution": "def is_leap_year(year):\n    \"\"\"A year is a leap year if divisible by 4, unless it's also divisible\n    by 100 - in which case it isn't, unless it's also divisible by 400.\"\"\"\n    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)"
+  }
+ ]
+}

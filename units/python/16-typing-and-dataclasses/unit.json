@@ -1,0 +1,158 @@
+{
+ "id": "python/typing-and-dataclasses",
+ "title": "Python 7 - Typing, dataclasses and protocols",
+ "track": "python",
+ "order": 14,
+ "minutes": 45,
+ "tests": 31,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/python/typing-and-dataclasses",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/python/16-typing-and-dataclasses/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestSafeDivide"
+  ],
+  "2": [
+   "TestStack",
+   "TestFirstMatch"
+  ],
+  "3": [
+   "TestPoint"
+  ],
+  "4": [
+   "TestSemVer"
+  ],
+  "5": [
+   "TestShoppingCart"
+  ],
+  "6": [
+   "TestPositiveInt"
+  ],
+  "7": [
+   "TestSupportsAreaProtocol"
+  ]
+ },
+ "sections": {
+  "1": [
+   "safe_divide"
+  ],
+  "2": [
+   "Stack",
+   "first_match"
+  ],
+  "3": [
+   "Point"
+  ],
+  "4": [
+   "SemVer",
+   "sort_versions"
+  ],
+  "5": [
+   "ShoppingCart"
+  ],
+  "6": [
+   "PositiveInt"
+  ],
+  "7": [
+   "SupportsArea",
+   "Circle",
+   "Rectangle",
+   "total_area",
+   "satisfies_supports_area"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "safe_divide",
+   "test_targets": [
+    "TestSafeDivide"
+   ],
+   "solution": "def safe_divide(a: float, b: float) -> Optional[float]:\n    \"\"\"Divide a by b, or return None instead of raising on b == 0.\n\n    The return type is `Optional[float]` - `float | None` - because failure\n    is modelled as a value the caller must check, not an exception they must\n    remember to catch. This is the same shape as dict.get's default of None.\n    \"\"\"\n    if b == 0:\n        return None\n    return a / b"
+  },
+  {
+   "name": "Stack",
+   "test_targets": [
+    "TestStack"
+   ],
+   "solution": "class Stack(Generic[T]):\n    \"\"\"A LIFO stack, generic over the element type.\n\n    `Generic[T]` is what lets a type checker infer `Stack[int]` from\n    `Stack()` used with ints, and flag `stack.push(\"x\")` on a `Stack[int]`\n    as an error - all at zero runtime cost, since Python itself never\n    checks T.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self._items: list[T] = []\n\n    def push(self, item: T) -> None:\n        self._items.append(item)\n\n    def pop(self) -> T:\n        if not self._items:\n            raise IndexError(\"pop from empty stack\")\n        return self._items.pop()\n\n    def peek(self) -> T:\n        if not self._items:\n            raise IndexError(\"peek at empty stack\")\n        return self._items[-1]\n\n    def is_empty(self) -> bool:\n        return not self._items\n\n    def __len__(self) -> int:\n        return len(self._items)"
+  },
+  {
+   "name": "first_match",
+   "test_targets": [
+    "TestFirstMatch"
+   ],
+   "solution": "def first_match(items: Iterable[T], predicate: Callable[[T], bool]) -> Optional[T]:\n    \"\"\"Return the first item for which predicate(item) is True, else None.\n\n    Generic over T via the TypeVar bound in both the Iterable and the\n    Callable - a type checker ties the element type of `items` to the\n    argument type `predicate` expects, so passing a `list[int]` with a\n    `Callable[[str], bool]` predicate is flagged before you run anything.\n    \"\"\"\n    for item in items:\n        if predicate(item):\n            return item\n    return None"
+  },
+  {
+   "name": "Point",
+   "test_targets": [
+    "TestPoint"
+   ],
+   "solution": "@dataclass(frozen=True)\nclass Point:\n    \"\"\"An immutable 2D point.\n\n    frozen=True makes __setattr__ raise, which is what lets a Point be\n    hashable (dataclass only generates __hash__ when frozen=True or\n    eq=False) and safe to use as a dict key or put in a set.\n    \"\"\"\n\n    x: float\n    y: float\n\n    def distance_to(self, other: \"Point\") -> float:\n        return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5"
+  },
+  {
+   "name": "SemVer",
+   "test_targets": [
+    "TestSemVer"
+   ],
+   "solution": "@dataclass(order=True)\nclass SemVer:\n    \"\"\"A semantic version, orderable by (major, minor, patch) only.\n\n    `field(compare=False)` excludes `prerelease` from both __eq__ and the\n    ordering methods order=True generates - so 1.2.3-rc1 and 1.2.3 compare\n    equal and sort adjacently, which matches how semver defines precedence\n    for the release core (real semver also orders prereleases below their\n    release, which this simplified version does not model).\n    \"\"\"\n\n    major: int\n    minor: int\n    patch: int\n    prerelease: str = field(default=\"\", compare=False)\n\n    def __str__(self) -> str:\n        base = f\"{self.major}.{self.minor}.{self.patch}\"\n        return f\"{base}-{self.prerelease}\" if self.prerelease else base"
+  },
+  {
+   "name": "sort_versions",
+   "test_targets": [
+    "TestSemVer"
+   ],
+   "solution": "def sort_versions(versions: list[SemVer]) -> list[SemVer]:\n    \"\"\"Sort SemVer instances using the dataclass-generated ordering.\"\"\"\n    return sorted(versions)"
+  },
+  {
+   "name": "ShoppingCart",
+   "test_targets": [
+    "TestShoppingCart"
+   ],
+   "solution": "@dataclass\nclass ShoppingCart:\n    \"\"\"A cart whose item list defaults to empty, per-instance.\n\n    `items: list = []` as a default would share ONE list across every\n    instance that doesn't pass its own - the classic mutable-default bug.\n    `field(default_factory=list)` calls list() fresh for each instance\n    instead, which is why dataclasses forbids a bare mutable literal\n    default and raises ValueError at class-definition time if you try.\n    \"\"\"\n\n    items: list = field(default_factory=list)\n\n    def add_item(self, name: str) -> None:\n        self.items.append(name)\n\n    def total_items(self) -> int:\n        return len(self.items)"
+  },
+  {
+   "name": "PositiveInt",
+   "test_targets": [
+    "TestPositiveInt"
+   ],
+   "solution": "@dataclass\nclass PositiveInt:\n    \"\"\"A dataclass that validates its own field after construction.\n\n    __post_init__ runs once, right after the generated __init__ finishes\n    assigning fields - the standard place to add validation a plain\n    dataclass field declaration cannot express.\n    \"\"\"\n\n    value: int\n\n    def __post_init__(self) -> None:\n        if self.value <= 0:\n            raise ValueError(f\"value must be positive, got {self.value}\")"
+  },
+  {
+   "name": "SupportsArea",
+   "test_targets": [
+    "TestSupportsAreaProtocol"
+   ],
+   "solution": "@runtime_checkable\nclass SupportsArea(Protocol):\n    \"\"\"Structural type: anything with a no-arg `area() -> float` method.\n\n    Nothing has to inherit from SupportsArea to satisfy it - Circle and\n    Rectangle below are plain classes. @runtime_checkable is what makes\n    isinstance(obj, SupportsArea) actually work; without it isinstance\n    raises TypeError, since Protocol is a static-only tool by default.\n    \"\"\"\n\n    def area(self) -> float:\n        ..."
+  },
+  {
+   "name": "Circle",
+   "test_targets": [
+    "TestSupportsAreaProtocol"
+   ],
+   "solution": "@dataclass\nclass Circle:\n    radius: float\n\n    def area(self) -> float:\n        return 3.141592653589793 * self.radius ** 2"
+  },
+  {
+   "name": "Rectangle",
+   "test_targets": [
+    "TestSupportsAreaProtocol"
+   ],
+   "solution": "@dataclass\nclass Rectangle:\n    width: float\n    height: float\n\n    def area(self) -> float:\n        return self.width * self.height"
+  },
+  {
+   "name": "total_area",
+   "test_targets": [
+    "TestSupportsAreaProtocol"
+   ],
+   "solution": "def total_area(shapes: Iterable[SupportsArea]) -> float:\n    \"\"\"Sum area() across any mix of objects that structurally satisfy it.\n\n    Circle and Rectangle share no base class - this function only ever\n    calls .area(), so it does not need one. That is what \"structural\"\n    means: the Protocol describes a shape, not a lineage.\n    \"\"\"\n    return sum(shape.area() for shape in shapes)"
+  },
+  {
+   "name": "satisfies_supports_area",
+   "test_targets": [
+    "TestSupportsAreaProtocol"
+   ],
+   "solution": "def satisfies_supports_area(obj: object) -> bool:\n    \"\"\"True if obj structurally satisfies SupportsArea, via isinstance.\n\n    Works only because SupportsArea is decorated @runtime_checkable -\n    isinstance checks for the *presence* of an `area` attribute, not that\n    it is callable with the right signature or returns a float.\n    \"\"\"\n    return isinstance(obj, SupportsArea)"
+  }
+ ]
+}

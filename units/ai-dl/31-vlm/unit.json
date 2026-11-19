@@ -1,0 +1,98 @@
+{
+ "id": "ai-dl/vlm",
+ "title": "DL 10 - Vision-language models",
+ "track": "ai-dl",
+ "order": 27,
+ "minutes": 55,
+ "tests": 22,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/vlm",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/31-vlm/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestL2Normalize"
+  ],
+  "2": [
+   "TestClipContrastiveLoss"
+  ],
+  "3": [
+   "TestZeroShotClassify"
+  ],
+  "4": [
+   "TestInsertImageTokens"
+  ],
+  "5": [
+   "TestPatchGridPositions"
+  ],
+  "6": [
+   "TestCrossAttend"
+  ]
+ },
+ "sections": {
+  "1": [
+   "l2_normalize"
+  ],
+  "2": [
+   "clip_contrastive_loss"
+  ],
+  "3": [
+   "zero_shot_classify"
+  ],
+  "4": [
+   "insert_image_tokens"
+  ],
+  "5": [
+   "patch_grid_positions"
+  ],
+  "6": [
+   "cross_attend"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "l2_normalize",
+   "test_targets": [
+    "TestL2Normalize"
+   ],
+   "solution": "def l2_normalize(x, dim=-1, eps=1e-8):\n    \"\"\"Normalise vectors along dim to unit length, without dividing by zero.\n\n    Every embedding-comparison exercise below assumes unit-norm vectors,\n    because that is what turns a dot product into a cosine similarity -\n    a plain dot product on un-normalised embeddings conflates \"aligned\n    direction\" with \"large magnitude\", which is not what CLIP-style\n    retrieval means by \"similar\".\n    \"\"\"\n    return x / x.norm(dim=dim, keepdim=True).clamp_min(eps)"
+  },
+  {
+   "name": "clip_contrastive_loss",
+   "test_targets": [
+    "TestClipContrastiveLoss"
+   ],
+   "solution": "def clip_contrastive_loss(image_embeds, text_embeds, logit_scale):\n    \"\"\"The CLIP training objective: symmetric InfoNCE over a batch.\n\n    image_embeds[i] and text_embeds[i] are assumed to be a matched pair\n    (the i-th image and its caption) - everything else in the batch is\n    treated as a negative. The similarity matrix's diagonal should score\n    highest; the loss is ordinary cross-entropy against that diagonal,\n    computed once treating each image as the query (rows) and once\n    treating each text as the query (columns), then averaged. Only the\n    \"in-batch negatives\" trick makes this cheap: no separate negative\n    sampling is needed, just a bigger batch.\n\n    logit_scale is a learned temperature (CLIP itself stores its log and\n    exponentiates it before use, clamped to prevent the logits from\n    blowing up) - passed here already exponentiated for simplicity.\n    \"\"\"\n    image_embeds = l2_normalize(image_embeds)\n    text_embeds = l2_normalize(text_embeds)\n    logits_per_image = logit_scale * image_embeds @ text_embeds.T\n    logits_per_text = logits_per_image.T\n    labels = torch.arange(image_embeds.shape[0], device=image_embeds.device)\n    loss_i = F.cross_entropy(logits_per_image, labels)\n    loss_t = F.cross_entropy(logits_per_text, labels)\n    return (loss_i + loss_t) / 2"
+  },
+  {
+   "name": "zero_shot_classify",
+   "test_targets": [
+    "TestZeroShotClassify"
+   ],
+   "solution": "def zero_shot_classify(image_embed, class_text_embeds):\n    \"\"\"Classify one image embedding against a set of class-text embeddings.\n\n    This is CLIP's headline trick: no classification head was ever\n    trained. \"Class 3\" is just whichever class-name text embedding\n    (e.g. the embedding of \"a photo of a dog\") is most cosine-similar to\n    the image embedding. Adding a new class means embedding a new string,\n    not retraining anything.\n\n    Returns (predicted_index, similarities) - the similarities are\n    plain cosine similarity, not passed through a temperature, since\n    nothing here is being optimised.\n    \"\"\"\n    image_embed = l2_normalize(image_embed, dim=-1)\n    class_text_embeds = l2_normalize(class_text_embeds, dim=-1)\n    similarities = class_text_embeds @ image_embed\n    predicted_index = int(similarities.argmax())\n    return predicted_index, similarities"
+  },
+  {
+   "name": "insert_image_tokens",
+   "test_targets": [
+    "TestInsertImageTokens"
+   ],
+   "solution": "def insert_image_tokens(text_embeds, image_embeds, image_token_position):\n    \"\"\"Splice image patch embeddings into a text embedding sequence.\n\n    LLaVA-style multimodal fusion: a single placeholder position in the\n    text sequence (conventionally an <image> token) is REPLACED by every\n    image patch embedding, expanding the sequence length by\n    (num_image_patches - 1). After this splice, a plain decoder-only\n    transformer processes the whole thing as one sequence - it has no\n    idea some of these \"tokens\" came from a vision encoder rather than\n    an embedding table. All the multimodal reasoning happens because\n    attention can look across the image-token span exactly like it looks\n    across any other tokens.\n    \"\"\"\n    before = text_embeds[:image_token_position]\n    after = text_embeds[image_token_position + 1:]\n    return torch.cat([before, image_embeds, after], dim=0)"
+  },
+  {
+   "name": "patch_grid_positions",
+   "test_targets": [
+    "TestPatchGridPositions"
+   ],
+   "solution": "def patch_grid_positions(num_patches_per_side):\n    \"\"\"2D (row, col) grid coordinates for a square image-patch grid.\n\n    Text tokens have one natural coordinate: their position in a 1D\n    sequence. Image patches naturally have TWO - row and column in the\n    original image - and a vision transformer's positional encoding\n    should reflect that a patch is close to its neighbours in both\n    directions, which a single flattened 1D index alone does not\n    capture (patch 7 and patch 8 might be adjacent, or on opposite\n    edges of the image, depending only on the grid width). Returns two\n    1D tensors of length num_patches_per_side**2, in row-major\n    (raster) order matching how patchify() flattens patches.\n    \"\"\"\n    rows = torch.arange(num_patches_per_side).repeat_interleave(num_patches_per_side)\n    cols = torch.arange(num_patches_per_side).repeat(num_patches_per_side)\n    return rows, cols"
+  },
+  {
+   "name": "cross_attend",
+   "test_targets": [
+    "TestCrossAttend"
+   ],
+   "solution": "def cross_attend(query, key, value):\n    \"\"\"Cross-attention: queries from one modality, keys/values from another.\n\n    The formula is EXACTLY scaled dot-product attention - softmax(QK^T /\n    sqrt(d))V - nothing about the mechanism itself changes when Q comes\n    from text tokens and K, V come from image patch embeddings instead\n    of from the same sequence as Q. \"Cross-attention\" names where the\n    inputs come from, not a different algorithm; this is the fusion\n    style behind Flamingo and BLIP's Q-Former, in contrast to\n    insert_image_tokens's approach of just concatenating everything into\n    one sequence and letting ordinary self-attention do the mixing.\n\n    query: (num_queries, d). key, value: (num_kv, d). num_queries and\n    num_kv may differ - cross-attention does not require equal lengths\n    the way self-attention naturally has them equal.\n    \"\"\"\n    d = query.shape[-1]\n    scores = query @ key.T / math.sqrt(d)\n    weights = F.softmax(scores, dim=-1)\n    return weights @ value"
+  }
+ ]
+}

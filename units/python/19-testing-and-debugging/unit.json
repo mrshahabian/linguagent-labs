@@ -1,0 +1,96 @@
+{
+ "id": "python/testing-and-debugging",
+ "title": "Python 10 - Testing and debugging patterns",
+ "track": "python",
+ "order": 17,
+ "minutes": 45,
+ "tests": 23,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/python/testing-and-debugging",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/python/19-testing-and-debugging/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestIsPrime"
+  ],
+  "2": [
+   "TestFetchFirstSuccess"
+  ],
+  "3": [
+   "TestTTLCache"
+  ],
+  "4": [
+   "TestDivideSafely"
+  ],
+  "5": [
+   "TestFindFirstFailure"
+  ],
+  "6": [
+   "TestMatmulChecked"
+  ]
+ },
+ "sections": {
+  "1": [
+   "is_prime"
+  ],
+  "2": [
+   "fetch_first_success"
+  ],
+  "3": [
+   "TTLCache"
+  ],
+  "4": [
+   "divide_safely"
+  ],
+  "5": [
+   "find_first_failure"
+  ],
+  "6": [
+   "matmul_checked"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "is_prime",
+   "test_targets": [
+    "TestIsPrime"
+   ],
+   "solution": "def is_prime(n):\n    \"\"\"True if n is prime.\n\n    The function itself is deliberately simple - the point of this\n    exercise is test_exercises.py's use of subTest to run it against a\n    whole table of (input, expected) cases as one parametrized test,\n    rather than one test method per case.\n    \"\"\"\n    if n < 2:\n        return False\n    if n < 4:\n        return True\n    if n % 2 == 0:\n        return False\n    i = 3\n    while i * i <= n:\n        if n % i == 0:\n            return False\n        i += 2\n    return True"
+  },
+  {
+   "name": "fetch_first_success",
+   "test_targets": [
+    "TestFetchFirstSuccess"
+   ],
+   "solution": "def fetch_first_success(client, ids):\n    \"\"\"Try client.get(id) for each id in order; return the first success.\n\n    Ids whose call raises are skipped, not fatal - one bad id should not\n    stop the search. Taking `client` as a parameter (dependency\n    injection) rather than importing a concrete HTTP client at module\n    level is what makes this testable at all: a test passes a\n    unittest.mock.Mock instead of hitting a real network.\n    \"\"\"\n    for item_id in ids:\n        try:\n            result = client.get(item_id)\n        except Exception:\n            continue\n        if result is not None:\n            return result\n    return None"
+  },
+  {
+   "name": "TTLCache",
+   "test_targets": [
+    "TestTTLCache"
+   ],
+   "solution": "class TTLCache:\n    \"\"\"A cache where entries expire after a time-to-live, in seconds.\n\n    now_fn defaults to time.time but is injectable - exactly like\n    `client` above. Time-based logic is notoriously hard to test\n    honestly (a test that calls time.sleep(61) to prove an entry expired\n    after 60s is slow and still flaky under load); injecting the clock\n    lets a test substitute a fake one it controls exactly.\n    \"\"\"\n\n    def __init__(self, now_fn=time.time):\n        self._now = now_fn\n        self._store = {}\n\n    def set(self, key, value, ttl):\n        self._store[key] = (value, self._now() + ttl)\n\n    def get(self, key):\n        if key not in self._store:\n            return None\n        value, expires_at = self._store[key]\n        if self._now() > expires_at:\n            del self._store[key]\n            return None\n        return value"
+  },
+  {
+   "name": "divide_safely",
+   "test_targets": [
+    "TestDivideSafely"
+   ],
+   "solution": "def divide_safely(a, b):\n    \"\"\"Divide a by b; log a warning and return None instead of raising on b == 0.\n\n    logger.warning, not print - a caller (or test) can control or\n    capture logging output without the function needing to know how its\n    caller wants messages handled. unittest's assertLogs is the\n    standard way to assert a specific message was logged at a specific\n    level, without capturing stdout.\n    \"\"\"\n    if b == 0:\n        logger.warning(\"division by zero: %r / %r\", a, b)\n        return None\n    return a / b"
+  },
+  {
+   "name": "find_first_failure",
+   "test_targets": [
+    "TestFindFirstFailure"
+   ],
+   "solution": "def find_first_failure(n, predicate):\n    \"\"\"Binary-search range(n) for the first index where predicate(i) is True.\n\n    predicate is assumed MONOTONIC: False for a while, then True from\n    some point on (never back to False) - exactly the assumption behind\n    `git bisect`. Instead of checking every index in order (O(n), and\n    each check might be an expensive test run or a slow query),\n    bisection finds the boundary in O(log n) checks. Returns n if\n    predicate is False everywhere.\n    \"\"\"\n    lo, hi = 0, n\n    while lo < hi:\n        mid = (lo + hi) // 2\n        if predicate(mid):\n            hi = mid\n        else:\n            lo = mid + 1\n    return lo"
+  },
+  {
+   "name": "matmul_checked",
+   "test_targets": [
+    "TestMatmulChecked"
+   ],
+   "solution": "def matmul_checked(a, b):\n    \"\"\"Multiply two matrices (lists of lists); raise MatrixShapeError on mismatch.\n\n    A generic \"shapes don't match\" or an IndexError from the multiply\n    loop itself both fail without saying *what* was wrong. Checking the\n    shapes up front and naming both of them in the message is the\n    difference between a five-second fix and a debugging session - the\n    same principle as this repo's own test failure messages.\n    \"\"\"\n    rows_a, cols_a = len(a), len(a[0]) if a else 0\n    rows_b, cols_b = len(b), len(b[0]) if b else 0\n    if cols_a != rows_b:\n        raise MatrixShapeError(\n            f\"cannot multiply a {rows_a}x{cols_a} matrix by a {rows_b}x{cols_b} \"\n            f\"matrix: {cols_a} (columns of a) != {rows_b} (rows of b)\"\n        )\n    return [\n        [sum(a[i][k] * b[k][j] for k in range(cols_a)) for j in range(cols_b)]\n        for i in range(rows_a)\n    ]"
+  }
+ ]
+}

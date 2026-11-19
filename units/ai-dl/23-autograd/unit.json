@@ -1,0 +1,129 @@
+{
+ "id": "ai-dl/autograd",
+ "title": "DL 2 - Autograd",
+ "track": "ai-dl",
+ "order": 19,
+ "minutes": 50,
+ "tests": 46,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/autograd",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/23-autograd/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestGradOf"
+  ],
+  "2": [
+   "TestAccumulation"
+  ],
+  "3": [
+   "TestFrozenForward"
+  ],
+  "4": [
+   "TestDetachVsClone"
+  ],
+  "5": [
+   "TestClipGradNorm"
+  ],
+  "6": [
+   "TestSquareFunction"
+  ],
+  "7": [
+   "TestNumericGrad"
+  ],
+  "8": [
+   "TestGradientPenalty"
+  ]
+ },
+ "sections": {
+  "1": [
+   "grad_of"
+  ],
+  "2": [
+   "accumulate_twice"
+  ],
+  "3": [
+   "frozen_forward"
+  ],
+  "4": [
+   "detach_vs_clone"
+  ],
+  "5": [
+   "clip_grad_norm"
+  ],
+  "6": [
+   "Square"
+  ],
+  "7": [
+   "numeric_grad"
+  ],
+  "8": [
+   "gradient_penalty"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "grad_of",
+   "test_targets": [
+    "TestGradOf"
+   ],
+   "solution": "def grad_of(f, x):\n    \"\"\"Return df/dx at x, without leaving anything on x.grad.\n\n    `torch.autograd.grad` computes gradients functionally: it returns them\n    instead of accumulating into `.grad`. That is what you want inside a\n    metric, a penalty term, or anything that must not disturb the training\n    step happening around it.\n    \"\"\"\n    x = x.detach().requires_grad_(True)\n    return torch.autograd.grad(f(x).sum(), x)[0]"
+  },
+  {
+   "name": "accumulate_twice",
+   "test_targets": [
+    "TestAccumulation"
+   ],
+   "solution": "def accumulate_twice(x):\n    \"\"\"Backward through x**2 twice and return x.grad.\n\n    The point: `.grad` ACCUMULATES, it is not overwritten. Two backward\n    passes give 2*2x, not 2x. That is a feature - it is how gradient\n    accumulation over micro-batches works - and it is why every training\n    loop must call `zero_grad()`.\n\n    The second backward needs `retain_graph=True`, because the graph is\n    freed as soon as it has been traversed once.\n    \"\"\"\n    x = x.detach().requires_grad_(True)\n    (x ** 2).sum().backward(retain_graph=True)\n    (x ** 2).sum().backward()\n    return x.grad"
+  },
+  {
+   "name": "frozen_forward",
+   "test_targets": [
+    "TestFrozenForward"
+   ],
+   "solution": "def frozen_forward(model, x):\n    \"\"\"Run the model without building a graph, and without changing it.\n\n    `torch.no_grad()` stops the graph being recorded at all: no activations\n    are kept alive, so it is the memory win at inference time. It is NOT\n    the same as `model.eval()`, which switches dropout and batch-norm to\n    inference behaviour but still records gradients. Real inference needs\n    both, and confusing the two is a very common interview miss.\n    \"\"\"\n    with torch.no_grad():\n        return model(x)"
+  },
+  {
+   "name": "detach_vs_clone",
+   "test_targets": [
+    "TestDetachVsClone"
+   ],
+   "solution": "def detach_vs_clone(x):\n    \"\"\"Return (detached, cloned) for a tensor that requires grad.\n\n    - `detach()` shares storage, drops the graph. Writing to it silently\n      corrupts x, and x's gradient with it.\n    - `clone()` copies storage, KEEPS the graph, so gradients still flow\n      back to x through the copy.\n\n    \"Take the value, not the gradient\" is `x.detach()`; \"take a separate\n    tensor I can still differentiate\" is `x.clone()`. `detach().clone()`\n    is the safe both-of-those.\n    \"\"\"\n    return x.detach(), x.clone()"
+  },
+  {
+   "name": "clip_grad_norm",
+   "test_targets": [
+    "TestClipGradNorm"
+   ],
+   "solution": "def clip_grad_norm(parameters, max_norm):\n    \"\"\"Scale gradients in place so their global L2 norm is at most max_norm.\n\n    Returns the norm BEFORE clipping - which is the number worth logging,\n    because a spike there is the earliest warning of a diverging run.\n\n    The norm is GLOBAL: every parameter is treated as one long vector, and\n    all of them are scaled by the same factor, so the update direction is\n    preserved and only its length changes. Clipping each tensor separately\n    changes the direction, which is a different (worse) algorithm.\n    \"\"\"\n    grads = [p.grad for p in parameters if p.grad is not None]\n    if not grads:\n        return torch.tensor(0.0)\n    total = torch.sqrt(sum(g.pow(2).sum() for g in grads))\n    if total > max_norm:\n        scale = max_norm / (total + 1e-6)\n        for g in grads:\n            g.mul_(scale)\n    return total"
+  },
+  {
+   "name": "Square",
+   "test_targets": [
+    "TestSquareFunction"
+   ],
+   "solution": "class Square(torch.autograd.Function):\n    \"\"\"x**2 with a hand-written backward.\n\n    The shape of every custom kernel: `forward` computes the value and\n    stashes what backward needs; `backward` receives dL/dy and returns\n    dL/dx. Here dy/dx = 2x, so dL/dx = grad_output * 2x.\n\n    `save_for_backward` (rather than `self.x = x`) is what lets autograd\n    detect the tensor being modified in place before backward runs.\n    \"\"\"\n\n    @staticmethod\n    def forward(ctx, x):\n        ctx.save_for_backward(x)\n        return x ** 2\n\n    @staticmethod\n    def backward(ctx, grad_output):\n        (x,) = ctx.saved_tensors\n        return grad_output * 2 * x"
+  },
+  {
+   "name": "StraightThroughRound",
+   "test_targets": [],
+   "solution": "class StraightThroughRound(torch.autograd.Function):\n    \"\"\"Round in the forward pass, pretend it was the identity in backward.\n\n    round() has a derivative of 0 almost everywhere, so a quantised network\n    would receive no gradient at all. The straight-through estimator lies:\n    it passes the incoming gradient through unchanged. This is the trick\n    behind quantisation-aware training and the VQ-VAE codebook.\n    \"\"\"\n\n    @staticmethod\n    def forward(ctx, x):\n        return torch.round(x)\n\n    @staticmethod\n    def backward(ctx, grad_output):\n        return grad_output"
+  },
+  {
+   "name": "numeric_grad",
+   "test_targets": [
+    "TestNumericGrad"
+   ],
+   "solution": "def numeric_grad(f, x, h=1e-4):\n    \"\"\"Central-difference gradient of a scalar function, for gradient checks.\n\n    Central difference has error O(h^2); the one-sided (f(x+h) - f(x)) / h\n    is only O(h), and its error swamps the thing you are trying to verify.\n    Use float64: at float32 the rounding noise is larger than the signal,\n    which is why `torch.autograd.gradcheck` insists on doubles.\n    \"\"\"\n    x = x.detach().to(torch.float64)\n    grad = torch.zeros_like(x)\n    for index in range(x.numel()):\n        step = torch.zeros_like(x)\n        step.view(-1)[index] = h\n        grad.view(-1)[index] = (f(x + step) - f(x - step)) / (2 * h)\n    return grad"
+  },
+  {
+   "name": "gradient_penalty",
+   "test_targets": [
+    "TestGradientPenalty"
+   ],
+   "solution": "def gradient_penalty(discriminator, x):\n    \"\"\"Mean squared L2 norm of d(output)/d(input) - a gradient penalty.\n\n    The move worth learning is `create_graph=True`: it makes the gradient\n    itself part of the graph, so the penalty can be differentiated again\n    when you call backward on it. Without it the penalty is a constant and\n    contributes nothing. This is WGAN-GP, and the same mechanism behind any\n    second-order or meta-learning objective.\n    \"\"\"\n    x = x.detach().requires_grad_(True)\n    output = discriminator(x)\n    gradients = torch.autograd.grad(\n        output.sum(), x, create_graph=True)[0]\n    return gradients.flatten(1).pow(2).sum(1).mean()"
+  }
+ ]
+}

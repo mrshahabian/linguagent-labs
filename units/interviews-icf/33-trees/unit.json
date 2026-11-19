@@ -1,0 +1,12 @@
+{
+ "id": "icf/trees",
+ "title": "Unit 4 - Debug an existing system",
+ "track": "icf",
+ "order": 38,
+ "minutes": 60,
+ "tests": 35,
+ "kind": "project",
+ "app": "https://linguagent.com/courses/icf/trees",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interviews-icf/33-trees/lab.ipynb",
+ "needs": []
+}

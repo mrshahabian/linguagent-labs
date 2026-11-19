@@ -1,0 +1,57 @@
+{
+ "id": "foundations/tooling-and-complexity",
+ "title": "Foundations 7 - Tooling and complexity basics",
+ "track": "foundations",
+ "order": 7,
+ "minutes": 40,
+ "tests": 16,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/foundations/tooling-and-complexity",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/foundations/07-tooling-and-complexity/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestLinearSearch"
+  ],
+  "2": [
+   "TestBinarySearch"
+  ],
+  "3": [
+   "TestHasDuplicatePair"
+  ]
+ },
+ "sections": {
+  "1": [
+   "linear_search"
+  ],
+  "2": [
+   "binary_search"
+  ],
+  "3": [
+   "has_duplicate_pair"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "linear_search",
+   "test_targets": [
+    "TestLinearSearch"
+   ],
+   "solution": "def linear_search(items, target):\n    \"\"\"Return the index of the first occurrence of target in items, or -1\n    if it isn't present. Checks every item, in order - O(n).\"\"\"\n    for i, item in enumerate(items):\n        if item == target:\n            return i\n    return -1"
+  },
+  {
+   "name": "binary_search",
+   "test_targets": [
+    "TestBinarySearch"
+   ],
+   "solution": "def binary_search(sorted_items, target):\n    \"\"\"Return the index of target in sorted_items (which must already be\n    sorted ascending), or -1 if it isn't present. Halves the search space\n    each step - O(log n).\"\"\"\n    low, high = 0, len(sorted_items) - 1\n    while low <= high:\n        mid = (low + high) // 2\n        if sorted_items[mid] == target:\n            return mid\n        elif sorted_items[mid] < target:\n            low = mid + 1\n        else:\n            high = mid - 1\n    return -1"
+  },
+  {
+   "name": "has_duplicate_pair",
+   "test_targets": [
+    "TestHasDuplicatePair"
+   ],
+   "solution": "def has_duplicate_pair(numbers):\n    \"\"\"True if any value appears more than once, checking every pair -\n    deliberately the O(n^2) version. Compare this to what you already\n    know from Module 03: len(numbers) != len(set(numbers)) answers the\n    same question in O(n).\"\"\"\n    for i in range(len(numbers)):\n        for j in range(i + 1, len(numbers)):\n            if numbers[i] == numbers[j]:\n                return True\n    return False"
+  }
+ ]
+}

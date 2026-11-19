@@ -1,0 +1,145 @@
+{
+ "id": "ai-dl/tensors",
+ "title": "DL 1 - Tensors",
+ "track": "ai-dl",
+ "order": 18,
+ "minutes": 45,
+ "tests": 48,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/tensors",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/22-tensors/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestAsTensorLike"
+  ],
+  "2": [
+   "TestSharesStorage"
+  ],
+  "3": [
+   "TestFlattenBatch"
+  ],
+  "4": [
+   "TestSafeNormalise"
+  ],
+  "5": [
+   "TestChannelsLast"
+  ],
+  "6": [
+   "TestBatchedPairwiseDistance"
+  ],
+  "7": [
+   "TestMaskedSoftmax"
+  ],
+  "8": [
+   "TestStableLogSumExp"
+  ],
+  "9": [
+   "TestCountParameters"
+  ]
+ },
+ "sections": {
+  "1": [
+   "as_tensor_like"
+  ],
+  "2": [
+   "shares_storage"
+  ],
+  "4": [
+   "safe_normalise"
+  ],
+  "3": [
+   "flatten_batch"
+  ],
+  "5": [
+   "to_channels_last"
+  ],
+  "6": [
+   "batched_pairwise_distance"
+  ],
+  "7": [
+   "masked_softmax"
+  ],
+  "9": [
+   "count_parameters",
+   "memory_bytes"
+  ],
+  "8": [
+   "stable_logsumexp"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "as_tensor_like",
+   "test_targets": [
+    "TestAsTensorLike"
+   ],
+   "solution": "def as_tensor_like(data, reference):\n    \"\"\"Turn `data` into a tensor on the same device and dtype as `reference`.\n\n    `torch.tensor(...)` always allocates on the CPU in the default dtype, so\n    the very next op raises \"Expected all tensors to be on the same device\".\n    `.to(reference)` copies device AND dtype in one call - the shortest\n    correct answer, and the one to give in an interview.\n    \"\"\"\n    return torch.as_tensor(data).to(reference)"
+  },
+  {
+   "name": "shares_storage",
+   "test_targets": [
+    "TestSharesStorage"
+   ],
+   "solution": "def shares_storage(a, b):\n    \"\"\"True if the two tensors read the same memory.\n\n    Same rule as NumPy: basic slicing, `view`, `permute`, `transpose` and\n    `expand` return VIEWS; `reshape` returns a view when it can and a copy\n    when it cannot; indexing with a list or a bool mask always copies.\n    \"\"\"\n    return a.untyped_storage().data_ptr() == b.untyped_storage().data_ptr()"
+  },
+  {
+   "name": "safe_normalise",
+   "test_targets": [
+    "TestSafeNormalise"
+   ],
+   "solution": "def safe_normalise(x, eps=1e-6):\n    \"\"\"Return x scaled to zero mean and unit variance, WITHOUT touching x.\n\n    The trap is `x -= x.mean()`. That is an in-place op: it mutates the\n    caller's tensor, and if x needs a gradient it also corrupts the autograd\n    graph (\"a leaf Variable that requires grad is being used in an in-place\n    operation\").\n    \"\"\"\n    return (x - x.mean()) / (x.std() + eps)"
+  },
+  {
+   "name": "flatten_batch",
+   "test_targets": [
+    "TestFlattenBatch"
+   ],
+   "solution": "def flatten_batch(x):\n    \"\"\"(B, ...) -> (B, N), keeping the batch dimension.\n\n    `x.view(B, -1)` fails on a non-contiguous tensor - a transposed or\n    permuted feature map, which is exactly what you get after `permute`.\n    `reshape` copies when it has to, so it always works. `flatten(1)` says\n    what you mean.\n    \"\"\"\n    return x.flatten(1)"
+  },
+  {
+   "name": "to_channels_last",
+   "test_targets": [
+    "TestChannelsLast"
+   ],
+   "solution": "def to_channels_last(x):\n    \"\"\"(B, C, H, W) -> a tensor whose memory is laid out as (B, H, W, C).\n\n    Channels-last is what convolution kernels and Tensor Cores want; the\n    logical SHAPE is unchanged, only the strides move. This is the tensor\n    version of NumPy's contiguity question, and the reason models are\n    trained with `model.to(memory_format=torch.channels_last)`.\n    \"\"\"\n    return x.contiguous(memory_format=torch.channels_last)"
+  },
+  {
+   "name": "batched_pairwise_distance",
+   "test_targets": [
+    "TestBatchedPairwiseDistance"
+   ],
+   "solution": "def batched_pairwise_distance(a, b, eps=1e-12):\n    \"\"\"Euclidean distance between every pair of rows, per batch element.\n\n    a: (B, N, D), b: (B, M, D) -> (B, N, M).\n\n    `torch.cdist` is the built-in and is what you should reach for in real\n    code. The point of writing it out is the unsqueeze pattern:\n    (B, N, 1, D) against (B, 1, M, D) broadcasts to (B, N, M, D).\n\n    `clamp_min(eps)` before the sqrt is not cosmetic. sqrt has an INFINITE\n    derivative at 0, and the squared distance of a point to itself is\n    exactly 0 - so the chain rule computes 0 * inf = NaN and the loss goes\n    to NaN on the first step. Note that clamping to 0 does not help: the\n    gradient only gets cut off when the input is strictly below the clamp.\n    This bites every triplet/contrastive loss ever written.\n    \"\"\"\n    diff = a.unsqueeze(2) - b.unsqueeze(1)\n    return diff.pow(2).sum(-1).clamp_min(eps).sqrt()"
+  },
+  {
+   "name": "masked_softmax",
+   "test_targets": [
+    "TestMaskedSoftmax"
+   ],
+   "solution": "def masked_softmax(scores, mask, dim=-1):\n    \"\"\"Softmax over `dim`, ignoring positions where mask is False.\n\n    Zeroing the probabilities after a plain softmax is wrong: the remaining\n    entries no longer sum to 1. Masking must happen BEFORE the exponential,\n    by setting the excluded logits to -inf.\n\n    Rows with nothing unmasked would be 0/0; they are returned as all-zero\n    rather than NaN, which is what an attention layer wants for a padded row.\n    \"\"\"\n    neg_inf = torch.finfo(scores.dtype).min\n    masked = scores.masked_fill(~mask, neg_inf)\n    weights = torch.softmax(masked, dim=dim)\n    # A fully masked row softmaxes to a uniform distribution over -inf; kill it.\n    any_valid = mask.any(dim=dim, keepdim=True)\n    return torch.where(any_valid, weights, torch.zeros_like(weights))"
+  },
+  {
+   "name": "count_parameters",
+   "test_targets": [
+    "TestCountParameters"
+   ],
+   "solution": "def count_parameters(module, trainable_only=True):\n    \"\"\"Number of scalar parameters in a module.\n\n    `p.numel()` counts elements, not tensors. Filtering on `requires_grad` is\n    what makes the number match \"trainable parameters\" in a model summary\n    after you have frozen a backbone.\n    \"\"\"\n    return sum(p.numel() for p in module.parameters()\n               if p.requires_grad or not trainable_only)"
+  },
+  {
+   "name": "memory_bytes",
+   "test_targets": [
+    "TestMemoryBytes"
+   ],
+   "solution": "def memory_bytes(shape, dtype=torch.float32):\n    \"\"\"Bytes a tensor of this shape and dtype occupies.\n\n    The arithmetic behind \"why did this OOM\". A (32, 3, 224, 224) float32\n    batch is 19 MB; the activations behind it are many times that, because\n    every layer's output is kept alive for the backward pass.\n    \"\"\"\n    count = 1\n    for size in shape:\n        count *= size\n    return count * torch.empty((), dtype=dtype).element_size()"
+  },
+  {
+   "name": "stable_logsumexp",
+   "test_targets": [
+    "TestStableLogSumExp"
+   ],
+   "solution": "def stable_logsumexp(x, dim=-1):\n    \"\"\"log(sum(exp(x))) without overflowing.\n\n    Subtracting the max is the same trick as a stable softmax: exp of a\n    large logit is inf, and log(inf) is inf. Written out here because\n    interviewers ask for the derivation, not the built-in:\n\n        log Σ exp(x) = m + log Σ exp(x - m),  m = max(x)\n    \"\"\"\n    maximum = x.max(dim=dim, keepdim=True).values\n    # An all-(-inf) row would give -inf + inf = NaN; clamp the shift to finite.\n    maximum = torch.where(torch.isfinite(maximum), maximum,\n                          torch.zeros_like(maximum))\n    shifted = (x - maximum).exp().sum(dim=dim, keepdim=True).log()\n    return (maximum + shifted).squeeze(dim)"
+  }
+ ]
+}

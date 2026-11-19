@@ -1,0 +1,145 @@
+{
+ "id": "python/files-and-serialization",
+ "title": "Python 9 - Files, paths and serialization",
+ "track": "python",
+ "order": 16,
+ "minutes": 45,
+ "tests": 25,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/python/files-and-serialization",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/python/18-files-and-serialization/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestReadLines",
+   "TestListPythonFiles"
+  ],
+  "2": [
+   "TestEnsureDir"
+  ],
+  "3": [
+   "TestJsonRoundTrip",
+   "TestMergeConfigs"
+  ],
+  "4": [
+   "TestSetEncoder"
+  ],
+  "5": [
+   "TestAtomicWriter"
+  ],
+  "6": [
+   "TestTemporaryCwd"
+  ],
+  "7": [
+   "TestChunkedLines"
+  ]
+ },
+ "sections": {
+  "1": [
+   "read_lines",
+   "list_python_files"
+  ],
+  "2": [
+   "ensure_dir"
+  ],
+  "3": [
+   "save_json",
+   "load_json",
+   "merge_configs"
+  ],
+  "4": [
+   "SetEncoder",
+   "dumps_with_sets"
+  ],
+  "5": [
+   "AtomicWriter"
+  ],
+  "6": [
+   "temporary_cwd"
+  ],
+  "7": [
+   "chunked_lines"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "read_lines",
+   "test_targets": [
+    "TestReadLines"
+   ],
+   "solution": "def read_lines(path):\n    \"\"\"Return the file's lines as a list of strings, with no trailing newline.\n\n    Path.read_text().splitlines() reads the whole file at once and never\n    leaves a dangling '\\\\n' on each line the way iterating the open file\n    object does - no need for `.rstrip(\"\\\\n\")` on every line yourself.\n    \"\"\"\n    return Path(path).read_text().splitlines()"
+  },
+  {
+   "name": "list_python_files",
+   "test_targets": [
+    "TestListPythonFiles"
+   ],
+   "solution": "def list_python_files(directory):\n    \"\"\"Return every .py file under directory, recursively, sorted by path.\n\n    Path.rglob(\"*.py\") walks subdirectories automatically - the\n    recursive-glob equivalent of os.walk plus a filename filter, without\n    the manual os.path.join bookkeeping. Sorting makes the result\n    deterministic; filesystem iteration order is not guaranteed.\n    \"\"\"\n    return sorted(str(p) for p in Path(directory).rglob(\"*.py\"))"
+  },
+  {
+   "name": "ensure_dir",
+   "test_targets": [
+    "TestEnsureDir"
+   ],
+   "solution": "def ensure_dir(path):\n    \"\"\"Create path (and any missing parents) if it doesn't exist; return it as a Path.\n\n    parents=True creates intermediate directories the way `mkdir -p`\n    does. exist_ok=True makes this idempotent - calling it twice is not\n    an error, unlike a bare Path.mkdir() which raises FileExistsError the\n    second time.\n    \"\"\"\n    p = Path(path)\n    p.mkdir(parents=True, exist_ok=True)\n    return p"
+  },
+  {
+   "name": "save_json",
+   "test_targets": [
+    "TestJsonRoundTrip",
+    "TestMergeConfigs"
+   ],
+   "solution": "def save_json(data, path):\n    \"\"\"Write data to path as JSON, creating the file (or overwriting it).\"\"\"\n    Path(path).write_text(json.dumps(data, indent=2))"
+  },
+  {
+   "name": "load_json",
+   "test_targets": [
+    "TestJsonRoundTrip",
+    "TestMergeConfigs"
+   ],
+   "solution": "def load_json(path):\n    \"\"\"Read and parse the JSON file at path.\"\"\"\n    return json.loads(Path(path).read_text())"
+  },
+  {
+   "name": "merge_configs",
+   "test_targets": [
+    "TestMergeConfigs"
+   ],
+   "solution": "def merge_configs(base, override):\n    \"\"\"Recursively merge override into base; override wins on every leaf.\n\n    A plain `{**base, **override}` only merges one level deep - a nested\n    dict in override completely replaces the matching one in base instead\n    of merging with it. This walks matching keys that are dicts on BOTH\n    sides and merges those recursively too, which is the behaviour people\n    actually mean by \"merge these two config files.\"\n    \"\"\"\n    result = dict(base)\n    for key, value in override.items():\n        if (key in result\n                and isinstance(result[key], dict)\n                and isinstance(value, dict)):\n            result[key] = merge_configs(result[key], value)\n        else:\n            result[key] = value\n    return result"
+  },
+  {
+   "name": "SetEncoder",
+   "test_targets": [
+    "TestSetEncoder"
+   ],
+   "solution": "class SetEncoder(json.JSONEncoder):\n    \"\"\"A JSONEncoder that can serialise sets by turning them into sorted lists.\n\n    json.dumps raises TypeError on a bare set - JSON has no set type.\n    Overriding .default() is the documented extension point: it is only\n    called for objects the base encoder does not already know how to\n    handle, so dict/list/str/int/float/bool/None all still go through the\n    normal fast path.\n    \"\"\"\n\n    def default(self, obj):\n        if isinstance(obj, set):\n            return sorted(obj)\n        return super().default(obj)"
+  },
+  {
+   "name": "dumps_with_sets",
+   "test_targets": [
+    "TestSetEncoder"
+   ],
+   "solution": "def dumps_with_sets(data):\n    \"\"\"json.dumps, but able to serialise sets via SetEncoder.\"\"\"\n    return json.dumps(data, cls=SetEncoder)"
+  },
+  {
+   "name": "AtomicWriter",
+   "test_targets": [
+    "TestAtomicWriter"
+   ],
+   "solution": "class AtomicWriter:\n    \"\"\"Write a file atomically: readers never see a partially-written file.\n\n    Writes go to a sibling `<name>.tmp` file first. On a clean exit,\n    os.replace() atomically swaps it into place - on POSIX and modern\n    Windows this rename is a single filesystem operation, so a concurrent\n    reader sees either the old complete file or the new complete file,\n    never a half-written one. On an exception, the temp file is removed\n    instead of being promoted, so the target path is left untouched.\n    \"\"\"\n\n    def __init__(self, path):\n        self.path = Path(path)\n        self.tmp_path = self.path.with_suffix(self.path.suffix + \".tmp\")\n        self._file = None\n\n    def __enter__(self):\n        self._file = open(self.tmp_path, \"w\")\n        return self._file\n\n    def __exit__(self, exc_type, exc_value, traceback):\n        self._file.close()\n        if exc_type is None:\n            os.replace(self.tmp_path, self.path)\n        else:\n            self.tmp_path.unlink(missing_ok=True)\n        return False"
+  },
+  {
+   "name": "temporary_cwd",
+   "test_targets": [
+    "TestTemporaryCwd"
+   ],
+   "solution": "@contextlib.contextmanager\ndef temporary_cwd(path):\n    \"\"\"Change the working directory for the duration of the `with` block.\n\n    The restore lives in `finally`, so the original directory comes back\n    even if the block raises - a context manager's whole job is exactly\n    this pairing of setup and guaranteed teardown, generalised from\n    open()/close() to any resource, here the process's cwd.\n    \"\"\"\n    previous = Path.cwd()\n    os.chdir(path)\n    try:\n        yield\n    finally:\n        os.chdir(previous)"
+  },
+  {
+   "name": "chunked_lines",
+   "test_targets": [
+    "TestChunkedLines"
+   ],
+   "solution": "def chunked_lines(path, chunk_size):\n    \"\"\"Yield the file's lines in lists of at most chunk_size, streaming.\n\n    Reads line by line rather than calling read_text() and slicing the\n    result, so memory use stays proportional to chunk_size instead of the\n    whole file - the difference between working on a log file that fits\n    in memory and one that does not.\n    \"\"\"\n    chunk = []\n    with open(path) as f:\n        for line in f:\n            chunk.append(line.rstrip(\"\\n\"))\n            if len(chunk) == chunk_size:\n                yield chunk\n                chunk = []\n    if chunk:\n        yield chunk"
+  }
+ ]
+}

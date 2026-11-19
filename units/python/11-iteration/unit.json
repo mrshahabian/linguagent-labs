@@ -1,0 +1,115 @@
+{
+ "id": "python/iteration",
+ "title": "Python 2 - Iteration and closures",
+ "track": "python",
+ "order": 9,
+ "minutes": 50,
+ "tests": 30,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/python/iteration",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/python/11-iteration/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestCountdown"
+  ],
+  "2": [
+   "TestSliding"
+  ],
+  "3": [
+   "TestClosures"
+  ],
+  "4": [
+   "TestRetry"
+  ],
+  "5": [
+   "TestAtomic"
+  ]
+ },
+ "sections": {
+  "1": [
+   "Countdown"
+  ],
+  "2": [
+   "sliding",
+   "chunked",
+   "flatten",
+   "unique"
+  ],
+  "3": [
+   "make_counters"
+  ],
+  "4": [
+   "retry",
+   "counted"
+  ],
+  "5": [
+   "atomic"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "Countdown",
+   "test_targets": [
+    "TestCountdown"
+   ],
+   "solution": "class Countdown:\n    \"\"\"An iterable that counts down from n to 1, restartable.\n\n    __iter__ returns a *fresh* iterator each time, which is why the object\n    can be looped over twice. A generator object cannot.\n    \"\"\"\n\n    def __init__(self, start):\n        self.start = start\n\n    def __iter__(self):\n        current = self.start\n        while current > 0:\n            yield current\n            current -= 1"
+  },
+  {
+   "name": "sliding",
+   "test_targets": [
+    "TestSliding"
+   ],
+   "solution": "def sliding(sequence, size):\n    \"\"\"Yield overlapping windows of `size` as tuples.\n\n    sliding([1,2,3,4], 2) -> (1,2), (2,3), (3,4)\n    Nothing is yielded when the sequence is shorter than the window.\n    \"\"\"\n    if size <= 0:\n        raise ValueError(\"size must be positive\")\n    for start in range(len(sequence) - size + 1):\n        yield tuple(sequence[start:start + size])"
+  },
+  {
+   "name": "chunked",
+   "test_targets": [
+    "TestChunked"
+   ],
+   "solution": "def chunked(iterable, size):\n    \"\"\"Yield consecutive lists of at most `size` items.\n\n    Works on any iterable, including infinite ones - so it must not call\n    len() or materialise the input.\n    \"\"\"\n    if size <= 0:\n        raise ValueError(\"size must be positive\")\n    iterator = iter(iterable)\n    while True:\n        batch = list(itertools.islice(iterator, size))\n        if not batch:\n            return\n        yield batch"
+  },
+  {
+   "name": "flatten",
+   "test_targets": [
+    "TestFlatten"
+   ],
+   "solution": "def flatten(nested):\n    \"\"\"Yield every non-iterable leaf of arbitrarily nested lists/tuples.\n\n    Strings are leaves, not containers - otherwise \"ab\" recurses forever\n    because \"a\"[0] is \"a\".\n    \"\"\"\n    for item in nested:\n        if isinstance(item, (list, tuple)):\n            yield from flatten(item)\n        else:\n            yield item"
+  },
+  {
+   "name": "unique",
+   "test_targets": [
+    "TestUnique"
+   ],
+   "solution": "def unique(iterable):\n    \"\"\"Yield items the first time they are seen, preserving order.\n\n    Lazy: consuming two items must not consume the whole input.\n    \"\"\"\n    seen = set()\n    for item in iterable:\n        if item not in seen:\n            seen.add(item)\n            yield item"
+  },
+  {
+   "name": "make_counters",
+   "test_targets": [
+    "TestClosures"
+   ],
+   "solution": "def make_counters(count):\n    \"\"\"Return `count` functions; the i-th returns i when called.\n\n    The classic trap:\n\n        [lambda: i for i in range(3)]   # every one returns 2\n\n    A closure captures the *variable*, not its value at creation time. Bind\n    the value with a default argument (or a factory function).\n    \"\"\"\n    return [lambda i=index: i for index in range(count)]"
+  },
+  {
+   "name": "retry",
+   "test_targets": [
+    "TestRetry"
+   ],
+   "solution": "def retry(times, exceptions=(Exception,)):\n    \"\"\"Decorator factory: re-call the function until it stops raising.\n\n    Re-raises the last exception once the attempts are used up. Keeps the\n    wrapped function's name and docstring via functools.wraps.\n    \"\"\"\n    def decorate(func):\n        @functools.wraps(func)\n        def wrapper(*args, **kwargs):\n            last = None\n            for _ in range(times):\n                try:\n                    return func(*args, **kwargs)\n                except exceptions as exc:\n                    last = exc\n            raise last\n        wrapper.attempts = times\n        return wrapper\n    return decorate"
+  },
+  {
+   "name": "counted",
+   "test_targets": [
+    "TestCounted"
+   ],
+   "solution": "def counted(func):\n    \"\"\"Decorator recording how many times the function was called.\n\n    The count lives on the wrapper as `.calls`.\n    \"\"\"\n    @functools.wraps(func)\n    def wrapper(*args, **kwargs):\n        wrapper.calls += 1\n        return func(*args, **kwargs)\n    wrapper.calls = 0\n    return wrapper"
+  },
+  {
+   "name": "atomic",
+   "test_targets": [
+    "TestAtomic"
+   ],
+   "solution": "@contextmanager\ndef atomic(mapping):\n    \"\"\"Apply changes to `mapping` only if the block completes.\n\n    On the way in, take a shallow copy. On the way out, either keep the\n    mutations or restore the snapshot. The exception still propagates.\n    \"\"\"\n    snapshot = dict(mapping)\n    try:\n        yield mapping\n    except Exception:\n        mapping.clear()\n        mapping.update(snapshot)\n        raise"
+  }
+ ]
+}

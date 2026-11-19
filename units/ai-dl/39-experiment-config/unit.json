@@ -1,0 +1,86 @@
+{
+ "id": "ai-dl/experiment-config",
+ "title": "DL 16 - Experiment configuration management",
+ "track": "ai-dl",
+ "order": 33,
+ "minutes": 50,
+ "tests": 18,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/experiment-config",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/39-experiment-config/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestInstantiate"
+  ],
+  "2": [
+   "TestResolveInterpolations"
+  ],
+  "3": [
+   "TestMergeConfigGroups"
+  ],
+  "4": [
+   "TestApplyOverrides"
+  ]
+ },
+ "sections": {
+  "1": [
+   "instantiate"
+  ],
+  "2": [
+   "_lookup",
+   "resolve_interpolations"
+  ],
+  "3": [
+   "merge_config_groups"
+  ],
+  "4": [
+   "_coerce",
+   "apply_overrides"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "instantiate",
+   "test_targets": [
+    "TestInstantiate"
+   ],
+   "solution": "def instantiate(config):\n    \"\"\"Build an object from a config dict via its \"_target_\" dotted path.\n\n    This is Hydra's `hydra.utils.instantiate` in miniature: \"_target_\" is a\n    string like \"collections.OrderedDict\" - everything before the last dot\n    is a MODULE to import, everything after is the attribute (a class or\n    function) to pull out of it. Every other key in the config becomes a\n    keyword argument to that callable. The config never imports anything\n    itself; it just names what to import, which is what lets swapping an\n    entire implementation be a one-line config change instead of an edit\n    to the code that constructs it.\n    \"\"\"\n    config = dict(config)\n    target = config.pop(\"_target_\")\n    module_path, _, attr_name = target.rpartition(\".\")\n    module = importlib.import_module(module_path)\n    target_callable = getattr(module, attr_name)\n    return target_callable(**config)"
+  },
+  {
+   "name": "_lookup",
+   "test_targets": [
+    "TestResolveInterpolations"
+   ],
+   "solution": "def _lookup(config, dotted_path):\n    value = config\n    for part in dotted_path.split(\".\"):\n        value = value[part]\n    return value"
+  },
+  {
+   "name": "resolve_interpolations",
+   "test_targets": [
+    "TestResolveInterpolations"
+   ],
+   "solution": "def resolve_interpolations(config):\n    \"\"\"Replace every \"${a.b.c}\" in a string value with the value it names.\n\n    OmegaConf (the config library under Hydra) resolves these lazily and\n    against the FINAL merged config, not against whatever was in scope\n    when the string was written - which is exactly why interpolation only\n    makes sense to resolve after every default and override has already\n    been applied, never before. A value can reference a sibling field\n    (run_name referencing pose.name) precisely because the whole config\n    is one tree by the time this runs.\n\n    Returns a new config with every string value's \"${...}\" references\n    substituted; non-string values pass through unchanged.\n    \"\"\"\n    def resolve_value(value):\n        if isinstance(value, dict):\n            return {k: resolve_value(v) for k, v in value.items()}\n        if isinstance(value, str):\n            def replace(match):\n                return str(_lookup(config, match.group(1)))\n            return _INTERPOLATION.sub(replace, value)\n        return value\n\n    return resolve_value(config)"
+  },
+  {
+   "name": "merge_config_groups",
+   "test_targets": [
+    "TestMergeConfigGroups"
+   ],
+   "solution": "def merge_config_groups(defaults, config_groups):\n    \"\"\"Assemble a config from named GROUPS, each with several options.\n\n    config_groups looks like {\"pose\": {\"yolo\": {...}, \"mediapipe\": {...}}}\n    - a family of interchangeable options for the same slot. defaults\n    picks exactly one option per group, e.g. {\"pose\": \"yolo\"}. The result\n    has one key per group, holding a COPY of the selected option's config\n    - a copy, so later mutating the merged result (via overrides) never\n    corrupts the original config_groups dict that other composed configs\n    might still read from.\n    \"\"\"\n    return {\n        group: copy.deepcopy(config_groups[group][defaults[group]])\n        for group in defaults\n    }"
+  },
+  {
+   "name": "_coerce",
+   "test_targets": [
+    "TestApplyOverrides"
+   ],
+   "solution": "def _coerce(raw_value):\n    for converter in (int, float):\n        try:\n            return converter(raw_value)\n        except ValueError:\n            pass\n    if raw_value in (\"true\", \"false\"):\n        return raw_value == \"true\"\n    return raw_value"
+  },
+  {
+   "name": "apply_overrides",
+   "test_targets": [
+    "TestApplyOverrides"
+   ],
+   "solution": "def apply_overrides(config, config_groups, overrides):\n    \"\"\"Apply Hydra-style CLI overrides, in order, to a merged config.\n\n    Two shapes, distinguished by whether the left side has a dot:\n\n      \"pose=mediapipe\"        -> swap the ENTIRE pose group for a\n                                  different option from config_groups\n      \"pose.confidence=0.9\"   -> walk into the nested dict and set just\n                                  that one leaf, leaving everything else\n                                  in that group untouched\n\n    Overrides apply left to right, so \"pose=mediapipe pose.device=cuda:0\"\n    swaps the whole group first and then overrides a key ON TOP of the\n    newly-swapped-in config - which only works because group swaps and\n    key overrides are applied to the same mutable config in sequence,\n    not computed independently and merged at the end.\n\n    Values are coerced: \"0.9\" becomes a float, \"50\" an int, \"true\"/\"false\"\n    a bool, anything else (like \"cuda:0\") stays a string.\n    \"\"\"\n    config = copy.deepcopy(config)\n    for override in overrides:\n        key, _, raw_value = override.partition(\"=\")\n        if \".\" not in key and key in config_groups:\n            config[key] = copy.deepcopy(config_groups[key][raw_value])\n            continue\n\n        *path, leaf = key.split(\".\")\n        target = config\n        for part in path:\n            target = target[part]\n        target[leaf] = _coerce(raw_value)\n\n    return config"
+  }
+ ]
+}

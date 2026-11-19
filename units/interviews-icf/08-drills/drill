@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Usage: ./drill          -- all blocks
+#        ./drill B        -- one block (A..G), verbose
+#        ./drill --check  -- run against solutions.py
+cd "$(dirname "$0")"
+if [ "$1" = "--check" ]; then
+  DRILL_TARGET=solutions python3 -m unittest test_drills 2>&1 | tail -4
+elif [ -n "$1" ]; then
+  python3 -m unittest "test_drills.TestBlock$1" -v
+else
+  python3 -m unittest test_drills
+fi

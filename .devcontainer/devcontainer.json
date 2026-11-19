@@ -1,0 +1,13 @@
+{
+  "name": "LinguAgent Labs",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install --index-url https://download.pytorch.org/whl/cpu torch && pip install numpy pytest jupyterlab ipykernel && python -m labkit",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "ms-toolsai.jupyter"],
+      "settings": {"python.defaultInterpreterPath": "/usr/local/bin/python"}
+    },
+    "codespaces": {"openFiles": ["README.md"]}
+  },
+  "hostRequirements": {"cpus": 2, "memory": "4gb"}
+}

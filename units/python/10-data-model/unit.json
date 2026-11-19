@@ -1,0 +1,119 @@
+{
+ "id": "python/data-model",
+ "title": "Python 1 - The data model",
+ "track": "python",
+ "order": 8,
+ "minutes": 50,
+ "tests": 34,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/python/data-model",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/python/10-data-model/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "k:repr"
+  ],
+  "2": [
+   "k:comparison"
+  ],
+  "3": [
+   "k:falsy"
+  ],
+  "4": [
+   "k:contains",
+   "k:iterates",
+   "k:unpacks"
+  ],
+  "5": [
+   "k:sorts",
+   "k:total_ordering",
+   "k:missing_components"
+  ],
+  "6": [
+   "TestRateLimiter"
+  ],
+  "7": [
+   "TestCollecting"
+  ],
+  "8": [
+   "TestDescriptor"
+  ],
+  "9": [
+   "TestLazy"
+  ]
+ },
+ "sections": {
+  "1": [
+   "Vec"
+  ],
+  "3": [
+   "Bag"
+  ],
+  "5": [
+   "Version"
+  ],
+  "6": [
+   "RateLimiter"
+  ],
+  "7": [
+   "collecting"
+  ],
+  "8": [
+   "Positive"
+  ],
+  "9": [
+   "Lazy"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "Vec",
+   "test_targets": [
+    "TestVec"
+   ],
+   "solution": "class Vec:\n    \"\"\"A 2D vector supporting +, -, scalar *, ==, abs() and unpacking.\"\"\"\n\n    __slots__ = (\"x\", \"y\")\n\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n\n    def __repr__(self):\n        return f\"Vec({self.x}, {self.y})\"\n\n    def __eq__(self, other):\n        if not isinstance(other, Vec):\n            return NotImplemented\n        return (self.x, self.y) == (other.x, other.y)\n\n    def __hash__(self):\n        return hash((self.x, self.y))\n\n    def __add__(self, other):\n        if not isinstance(other, Vec):\n            return NotImplemented\n        return Vec(self.x + other.x, self.y + other.y)\n\n    def __sub__(self, other):\n        if not isinstance(other, Vec):\n            return NotImplemented\n        return Vec(self.x - other.x, self.y - other.y)\n\n    def __mul__(self, scalar):\n        if not isinstance(scalar, (int, float)):\n            return NotImplemented\n        return Vec(self.x * scalar, self.y * scalar)\n\n    # 3 * v as well as v * 3\n    __rmul__ = __mul__\n\n    def __abs__(self):\n        return (self.x ** 2 + self.y ** 2) ** 0.5\n\n    def __iter__(self):\n        yield self.x\n        yield self.y"
+  },
+  {
+   "name": "Bag",
+   "test_targets": [
+    "TestBag"
+   ],
+   "solution": "class Bag:\n    \"\"\"A multiset. Empty bags are falsy; `in` is O(1).\"\"\"\n\n    def __init__(self, items=()):\n        self._counts = {}\n        for item in items:\n            self._counts[item] = self._counts.get(item, 0) + 1\n\n    def add(self, item):\n        self._counts[item] = self._counts.get(item, 0) + 1\n\n    def __len__(self):\n        # Total items, not distinct ones - so truthiness follows from it.\n        return sum(self._counts.values())\n\n    def __contains__(self, item):\n        # Without this, `in` would fall back to iterating: O(n) instead of O(1).\n        return item in self._counts\n\n    def __iter__(self):\n        for item, count in self._counts.items():\n            for _ in range(count):\n                yield item\n\n    def __repr__(self):\n        return f\"Bag({sorted(self)!r})\""
+  },
+  {
+   "name": "Version",
+   "test_targets": [
+    "TestVersion"
+   ],
+   "solution": "@functools.total_ordering\nclass Version:\n    \"\"\"A dotted version that sorts numerically, not lexicographically.\"\"\"\n\n    def __init__(self, text):\n        self.text = text\n        self.parts = tuple(int(part) for part in text.split(\".\"))\n\n    def __repr__(self):\n        return f\"Version({self.text!r})\"\n\n    def _padded(self, other):\n        width = max(len(self.parts), len(other.parts))\n        pad = lambda parts: parts + (0,) * (width - len(parts))\n        return pad(self.parts), pad(other.parts)\n\n    def __eq__(self, other):\n        if not isinstance(other, Version):\n            return NotImplemented\n        mine, theirs = self._padded(other)\n        return mine == theirs\n\n    def __lt__(self, other):\n        if not isinstance(other, Version):\n            return NotImplemented\n        mine, theirs = self._padded(other)\n        return mine < theirs\n\n    def __hash__(self):\n        # 1.0 and 1.0.0 compare equal, so they must hash equal: strip\n        # trailing zeros before hashing.\n        parts = list(self.parts)\n        while parts and parts[-1] == 0:\n            parts.pop()\n        return hash(tuple(parts))"
+  },
+  {
+   "name": "RateLimiter",
+   "test_targets": [
+    "TestRateLimiter"
+   ],
+   "solution": "class RateLimiter:\n    \"\"\"A callable object: `limiter(name)` is True while under the limit.\"\"\"\n\n    def __init__(self, limit):\n        self.limit = limit\n        self.seen = {}\n\n    def __call__(self, key):\n        count = self.seen.get(key, 0)\n        if count >= self.limit:\n            return False\n        self.seen[key] = count + 1\n        return True"
+  },
+  {
+   "name": "collecting",
+   "test_targets": [
+    "TestCollecting"
+   ],
+   "solution": "class collecting:\n    \"\"\"Context manager that gathers appended values and optionally swallows\n    one exception type.\"\"\"\n\n    def __init__(self, suppress=()):\n        self.suppress = suppress\n        self.items = []\n\n    def __enter__(self):\n        # Whatever this returns is what `as` binds.\n        return self.items\n\n    def __exit__(self, exc_type, exc, tb):\n        # A truthy return value suppresses the exception. Returning None or\n        # False lets it propagate.\n        return exc_type is not None and issubclass(exc_type, self.suppress)"
+  },
+  {
+   "name": "Positive",
+   "test_targets": [
+    "TestDescriptor"
+   ],
+   "solution": "class Positive:\n    \"\"\"A data descriptor validating that the value stays positive.\"\"\"\n\n    def __set_name__(self, owner, name):\n        # Called at class creation with the attribute name it was bound to.\n        self.name = name\n\n    def __get__(self, obj, objtype=None):\n        if obj is None:\n            return self\n        return obj.__dict__[self.name]\n\n    def __set__(self, obj, value):\n        if value <= 0:\n            raise ValueError(f\"{self.name} must be positive, got {value}\")\n        obj.__dict__[self.name] = value"
+  },
+  {
+   "name": "Lazy",
+   "test_targets": [
+    "TestLazy"
+   ],
+   "solution": "class Lazy:\n    \"\"\"Builds each attribute on first access, then caches it.\n\n    __getattr__ runs only when normal lookup fails, so once the value is in\n    __dict__ it is never called again.\n    \"\"\"\n\n    def __init__(self, **builders):\n        # Bypass __setattr__ concerns by writing straight to __dict__.\n        self.__dict__[\"_builders\"] = builders\n        self.__dict__[\"build_count\"] = 0\n\n    def __getattr__(self, name):\n        builders = self.__dict__[\"_builders\"]\n        if name not in builders:\n            raise AttributeError(name)\n        value = builders[name]()\n        self.__dict__[\"build_count\"] += 1\n        self.__dict__[name] = value\n        return value"
+  }
+ ]
+}

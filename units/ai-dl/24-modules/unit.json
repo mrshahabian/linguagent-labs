@@ -1,0 +1,124 @@
+{
+ "id": "ai-dl/modules",
+ "title": "DL 3 - Modules and surgery",
+ "track": "ai-dl",
+ "order": 20,
+ "minutes": 50,
+ "tests": 52,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/modules",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/24-modules/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestMLP"
+  ],
+  "2": [
+   "TestRunningMean"
+  ],
+  "3": [
+   "TestFreeze"
+  ],
+  "4": [
+   "TestInitWeights"
+  ],
+  "5": [
+   "TestTieWeights"
+  ],
+  "6": [
+   "TestActivationStats"
+  ],
+  "7": [
+   "TestLoadPartial"
+  ],
+  "8": [
+   "TestModuleSummary"
+  ]
+ },
+ "sections": {
+  "1": [
+   "MLP"
+  ],
+  "2": [
+   "RunningMean"
+  ],
+  "3": [
+   "freeze"
+  ],
+  "4": [
+   "init_weights"
+  ],
+  "5": [
+   "tie_weights"
+  ],
+  "6": [
+   "activation_stats"
+  ],
+  "7": [
+   "load_partial"
+  ],
+  "8": [
+   "module_summary"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "MLP",
+   "test_targets": [
+    "TestMLP"
+   ],
+   "solution": "class MLP(nn.Module):\n    \"\"\"A plain multi-layer perceptron with configurable hidden sizes.\n\n    Note `nn.ModuleList`, not a Python list: a bare list is invisible to\n    `.parameters()`, so the optimiser never sees those layers and they\n    silently never train. Same for `nn.ParameterList` and `nn.ModuleDict`.\n    This is the single most common nn.Module bug.\n    \"\"\"\n\n    def __init__(self, in_features, hidden, out_features, activation=nn.ReLU):\n        super().__init__()\n        sizes = [in_features, *hidden]\n        self.layers = nn.ModuleList(\n            nn.Linear(a, b) for a, b in zip(sizes, sizes[1:]))\n        self.activation = activation()\n        self.head = nn.Linear(sizes[-1], out_features)\n\n    def forward(self, x):\n        for layer in self.layers:\n            x = self.activation(layer(x))\n        return self.head(x)"
+  },
+  {
+   "name": "RunningMean",
+   "test_targets": [
+    "TestRunningMean"
+   ],
+   "solution": "class RunningMean(nn.Module):\n    \"\"\"Tracks an exponential moving average of the inputs it has seen.\n\n    The average is a BUFFER, not a parameter: it is state the module owns\n    but gradient descent must not touch. Buffers appear in `state_dict`\n    (so they are saved and restored), move with `.to(device)`, and are\n    excluded from `.parameters()`.\n\n    That is exactly how BatchNorm's running_mean/running_var work - and\n    why loading a checkpoint into a model built without them fails loudly.\n    \"\"\"\n\n    def __init__(self, size, momentum=0.1):\n        super().__init__()\n        self.momentum = momentum\n        self.register_buffer(\"mean\", torch.zeros(size))\n        self.register_buffer(\"count\", torch.zeros((), dtype=torch.long))\n\n    def forward(self, x):\n        if self.training:\n            with torch.no_grad():\n                batch_mean = x.detach().mean(0)\n                self.mean.mul_(1 - self.momentum).add_(\n                    batch_mean * self.momentum)\n                self.count += 1\n        return x - self.mean"
+  },
+  {
+   "name": "freeze",
+   "test_targets": [
+    "TestFreeze"
+   ],
+   "solution": "def freeze(module, prefix=None):\n    \"\"\"Freeze parameters, optionally only those whose name starts with prefix.\n\n    Returns the number of parameters frozen. Two halves people forget:\n\n    1. `requires_grad_(False)` alone is not enough if the optimiser was\n       built over every parameter - it will still apply weight decay and\n       momentum to them. Build the optimiser AFTER freezing, or filter.\n    2. Freezing does not disable BatchNorm's running statistics. A frozen\n       backbone left in train() mode still drifts. `module.eval()` is the\n       other half.\n    \"\"\"\n    frozen = 0\n    for name, parameter in module.named_parameters():\n        if prefix is None or name.startswith(prefix):\n            parameter.requires_grad_(False)\n            frozen += parameter.numel()\n    return frozen"
+  },
+  {
+   "name": "init_weights",
+   "test_targets": [
+    "TestInitWeights"
+   ],
+   "solution": "def init_weights(module, gain=1.0):\n    \"\"\"Apply Xavier-uniform init to every Linear weight; zero the biases.\n\n    Why init matters: with a bad scale the activation variance either\n    explodes or collapses layer by layer, and a deep net stops training\n    entirely. Xavier keeps the variance constant for a symmetric\n    activation; Kaiming (`kaiming_normal_`, nonlinearity=\"relu\") is the\n    right choice after a ReLU, because ReLU throws away half the signal.\n\n    `module.apply(fn)` walks every submodule, which is the idiomatic way to\n    do this over a whole model.\n    \"\"\"\n    def initialise(layer):\n        if isinstance(layer, nn.Linear):\n            nn.init.xavier_uniform_(layer.weight, gain=gain)\n            if layer.bias is not None:\n                nn.init.zeros_(layer.bias)\n\n    module.apply(initialise)\n    return module"
+  },
+  {
+   "name": "tie_weights",
+   "test_targets": [
+    "TestTieWeights"
+   ],
+   "solution": "def tie_weights(embedding, output_layer):\n    \"\"\"Share one weight matrix between an embedding and an output projection.\n\n    Standard in language models: the input embedding (V, D) and the output\n    projection (V, D) learn the same thing, so tying them halves the\n    parameter count and usually improves perplexity.\n\n    Assignment - not `copy_` - is what shares them. `copy_` makes them\n    equal once and they immediately diverge, which looks identical at\n    initialisation and is a genuinely hard bug to spot.\n    \"\"\"\n    if embedding.weight.shape != output_layer.weight.shape:\n        raise ValueError(\n            f\"cannot tie {tuple(embedding.weight.shape)} to \"\n            f\"{tuple(output_layer.weight.shape)}\")\n    output_layer.weight = embedding.weight\n    return output_layer"
+  },
+  {
+   "name": "activation_stats",
+   "test_targets": [
+    "TestActivationStats"
+   ],
+   "solution": "def activation_stats(model, x):\n    \"\"\"Run x through the model, returning {layer_name: output std}.\n\n    Forward hooks let you observe a model you did not write, without\n    editing its forward(). Diagnosing a dead network usually starts here:\n    if the std collapses towards 0 layer by layer the signal is vanishing;\n    if it grows without bound the run is about to produce NaN.\n\n    Every handle must be removed. Hooks left registered leak memory and\n    silently slow down every subsequent forward pass.\n    \"\"\"\n    stats = {}\n    handles = []\n\n    def make_hook(name):\n        def hook(_module, _inputs, output):\n            stats[name] = output.detach().float().std().item()\n        return hook\n\n    try:\n        for name, layer in model.named_modules():\n            if name and not list(layer.children()):   # leaves only\n                handles.append(layer.register_forward_hook(make_hook(name)))\n        with torch.no_grad():\n            model(x)\n    finally:\n        for handle in handles:\n            handle.remove()\n    return stats"
+  },
+  {
+   "name": "load_partial",
+   "test_targets": [
+    "TestLoadPartial"
+   ],
+   "solution": "def load_partial(model, state_dict):\n    \"\"\"Load only the entries whose name AND shape match. Return what was skipped.\n\n    The everyday transfer-learning problem: a checkpoint trained with 1000\n    output classes going into a model with 10. `load_state_dict` refuses\n    outright, and `strict=False` catches missing names but still raises on\n    a shape mismatch - so the filtering has to be explicit.\n    \"\"\"\n    own = model.state_dict()\n    usable = {name: tensor for name, tensor in state_dict.items()\n              if name in own and own[name].shape == tensor.shape}\n    skipped = sorted(set(state_dict) - set(usable))\n    model.load_state_dict(usable, strict=False)\n    return skipped"
+  },
+  {
+   "name": "module_summary",
+   "test_targets": [
+    "TestModuleSummary"
+   ],
+   "solution": "def module_summary(model):\n    \"\"\"[(name, class name, parameter count)] for each direct child.\n\n    The thing you actually want when someone hands you a checkpoint: where\n    the parameters live. `named_children` is one level deep;\n    `named_modules` recurses (and would double-count if you summed it).\n    \"\"\"\n    return [(name, type(child).__name__,\n             sum(p.numel() for p in child.parameters()))\n            for name, child in model.named_children()]"
+  }
+ ]
+}

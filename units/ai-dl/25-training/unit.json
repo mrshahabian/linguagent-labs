@@ -1,0 +1,176 @@
+{
+ "id": "ai-dl/training",
+ "title": "DL 4 - Training loops",
+ "track": "ai-dl",
+ "order": 21,
+ "minutes": 55,
+ "tests": 56,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/training",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/25-training/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestArrayDataset"
+  ],
+  "2": [
+   "TestPadCollate"
+  ],
+  "3": [
+   "TestSeeding",
+   "k:worker_init"
+  ],
+  "4": [
+   "TestSeeding",
+   "k:same_seed",
+   "k:different_seeds_differ"
+  ],
+  "5": [
+   "TestTrainOneEpoch"
+  ],
+  "6": [
+   "TestEvaluate"
+  ],
+  "7": [
+   "TestCosineWarmup"
+  ],
+  "8": [
+   "TestCheckpoints"
+  ],
+  "9": [
+   "TestOverfitOneBatch"
+  ],
+  "10": [
+   "TestClassWeights"
+  ],
+  "11": [
+   "TestBuildLoader"
+  ]
+ },
+ "sections": {
+  "1": [
+   "ArrayDataset"
+  ],
+  "2": [
+   "pad_collate"
+  ],
+  "4": [
+   "seed_everything",
+   "worker_init_fn",
+   "build_loader"
+  ],
+  "5": [
+   "train_one_epoch"
+  ],
+  "6": [
+   "evaluate"
+  ],
+  "7": [
+   "cosine_warmup_lr"
+  ],
+  "8": [
+   "save_checkpoint",
+   "load_checkpoint"
+  ],
+  "9": [
+   "overfit_one_batch"
+  ],
+  "10": [
+   "class_weights"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "ArrayDataset",
+   "test_targets": [
+    "TestArrayDataset"
+   ],
+   "solution": "class ArrayDataset(Dataset):\n    \"\"\"The minimum a map-style Dataset needs: __len__ and __getitem__.\n\n    __getitem__ returns ONE example, not a batch - the DataLoader does the\n    batching. Returning a batch here is a common first mistake and produces\n    an extra leading dimension that only shows up in the loss.\n    \"\"\"\n\n    def __init__(self, features, labels):\n        if len(features) != len(labels):\n            raise ValueError(\"features and labels must be the same length\")\n        self.features = features\n        self.labels = labels\n\n    def __len__(self):\n        return len(self.features)\n\n    def __getitem__(self, index):\n        return self.features[index], self.labels[index]"
+  },
+  {
+   "name": "pad_collate",
+   "test_targets": [
+    "TestPadCollate"
+   ],
+   "solution": "def pad_collate(batch, pad_value=0):\n    \"\"\"Collate variable-length sequences into (padded, lengths).\n\n    The default collate_fn calls torch.stack, which requires identical\n    shapes - so the moment your samples are sentences, or detections, or\n    point clouds, you must write this yourself.\n\n    Returning the true lengths alongside the padding is what lets the model\n    mask the padded positions out. Padding without lengths is how padding\n    silently becomes part of the input.\n    \"\"\"\n    sequences = [torch.as_tensor(item) for item in batch]\n    lengths = torch.tensor([len(s) for s in sequences])\n    longest = int(lengths.max()) if len(sequences) else 0\n    padded = torch.full((len(sequences), longest), pad_value,\n                        dtype=sequences[0].dtype if sequences else torch.long)\n    for row, sequence in enumerate(sequences):\n        padded[row, :len(sequence)] = sequence\n    return padded, lengths"
+  },
+  {
+   "name": "seed_everything",
+   "test_targets": [
+    "TestSeeding",
+    "TestSeeding",
+    "TestBuildLoader",
+    "TestSeeding"
+   ],
+   "solution": "def seed_everything(seed):\n    \"\"\"Seed Python, NumPy and torch so a run is reproducible.\n\n    Three separate generators, and missing one is enough to make a run\n    unreproducible - most often NumPy, because it is what augmentation\n    pipelines use.\n\n    Note what this does NOT buy you: DataLoader worker processes get their\n    own seeds (see `worker_init_fn`), and cuDNN picks algorithms\n    non-deterministically unless you also set\n    `torch.use_deterministic_algorithms(True)`.\n    \"\"\"\n    random.seed(seed)\n    np.random.seed(seed)\n    torch.manual_seed(seed)\n    torch.cuda.manual_seed_all(seed)\n    return seed"
+  },
+  {
+   "name": "worker_init_fn",
+   "test_targets": [
+    "TestSeeding",
+    "TestSeeding",
+    "TestBuildLoader",
+    "TestSeeding"
+   ],
+   "solution": "def worker_init_fn(worker_id):\n    \"\"\"Give each DataLoader worker a distinct seed.\n\n    The bug this fixes is famous: fork() copies the parent's RNG state, so\n    every worker generates the SAME \"random\" augmentations. With 4 workers\n    you get each augmentation four times per epoch and never notice, because\n    the loss still goes down - just more slowly than it should.\n\n    torch seeds its own workers correctly; numpy and random are the ones\n    that need this.\n    \"\"\"\n    seed = torch.initial_seed() % 2 ** 32\n    np.random.seed(seed + worker_id)\n    random.seed(seed + worker_id)"
+  },
+  {
+   "name": "train_one_epoch",
+   "test_targets": [
+    "TestTrainOneEpoch"
+   ],
+   "solution": "def train_one_epoch(model, loader, optimiser, loss_fn):\n    \"\"\"Run one epoch, returning the mean loss per SAMPLE.\n\n    The four lines, in the only order that works:\n\n        optimiser.zero_grad()    # .grad accumulates; without this the\n        loss.backward()          # gradients of every earlier batch are\n        clip / inspect           # still in there\n        optimiser.step()\n\n    `loss.item() * len(batch)` then dividing by the dataset size is not\n    pedantry: averaging the per-batch means over-weights a short final\n    batch, which is exactly where a \"why does my val loss look different\"\n    discrepancy comes from.\n    \"\"\"\n    model.train()\n    total, seen = 0.0, 0\n    for features, labels in loader:\n        optimiser.zero_grad()\n        predictions = model(features)\n        loss = loss_fn(predictions, labels)\n        loss.backward()\n        optimiser.step()\n        total += loss.item() * len(features)\n        seen += len(features)\n    return total / max(seen, 1)"
+  },
+  {
+   "name": "evaluate",
+   "test_targets": [
+    "TestEvaluate"
+   ],
+   "solution": "@torch.no_grad()\ndef evaluate(model, loader, loss_fn):\n    \"\"\"Mean loss over the loader, in eval mode, without building a graph.\n\n    Both halves matter and they do different things:\n      - `model.eval()` switches dropout off and makes batch-norm use its\n        running statistics instead of the batch's.\n      - `no_grad` stops the graph being recorded, which is the memory win.\n\n    Restoring the previous mode on the way out means this is safe to call\n    from inside a training loop.\n    \"\"\"\n    was_training = model.training\n    model.eval()\n    try:\n        total, seen = 0.0, 0\n        for features, labels in loader:\n            loss = loss_fn(model(features), labels)\n            total += loss.item() * len(features)\n            seen += len(features)\n        return total / max(seen, 1)\n    finally:\n        model.train(was_training)"
+  },
+  {
+   "name": "cosine_warmup_lr",
+   "test_targets": [
+    "TestCosineWarmup"
+   ],
+   "solution": "def cosine_warmup_lr(step, base_lr, warmup_steps, total_steps, min_lr=0.0):\n    \"\"\"Learning rate at `step`: linear warm-up, then cosine decay.\n\n    The default schedule for transformers. Warm-up exists because Adam's\n    second-moment estimate is garbage for the first few hundred steps, so a\n    full-size update early on can wreck the initialisation.\n\n    Cosine rather than step decay because it spends more time at small\n    learning rates near the end, where the fine-tuning happens.\n    \"\"\"\n    if warmup_steps > 0 and step < warmup_steps:\n        return base_lr * (step + 1) / warmup_steps\n    progress = ((step - warmup_steps) / max(total_steps - warmup_steps, 1)\n                if total_steps > warmup_steps else 1.0)\n    progress = min(max(progress, 0.0), 1.0)\n    return min_lr + (base_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * progress))"
+  },
+  {
+   "name": "save_checkpoint",
+   "test_targets": [
+    "TestCheckpoints"
+   ],
+   "solution": "def save_checkpoint(path, model, optimiser, epoch, **extra):\n    \"\"\"Save everything needed to RESUME, not just to run inference.\n\n    The optimiser state is the part people forget. Adam carries two moment\n    estimates per parameter; resuming without them restarts the optimiser\n    cold and produces a visible loss spike. The scheduler and the epoch\n    number are the same argument.\n    \"\"\"\n    torch.save({\"model\": model.state_dict(),\n                \"optimiser\": optimiser.state_dict(),\n                \"epoch\": epoch,\n                **extra}, path)\n    return path"
+  },
+  {
+   "name": "load_checkpoint",
+   "test_targets": [
+    "TestCheckpoints"
+   ],
+   "solution": "def load_checkpoint(path, model, optimiser=None):\n    \"\"\"Restore a checkpoint in place; return the payload.\n\n    `weights_only=True` is the safe default: an unrestricted torch.load\n    unpickles arbitrary objects, which means a downloaded checkpoint can\n    execute code. It became the default in torch 2.6, and is worth knowing\n    as a security answer, not just an API detail.\n    \"\"\"\n    payload = torch.load(path, map_location=\"cpu\", weights_only=True)\n    model.load_state_dict(payload[\"model\"])\n    if optimiser is not None and \"optimiser\" in payload:\n        optimiser.load_state_dict(payload[\"optimiser\"])\n    return payload"
+  },
+  {
+   "name": "overfit_one_batch",
+   "test_targets": [
+    "TestOverfitOneBatch"
+   ],
+   "solution": "def overfit_one_batch(model, features, labels, loss_fn, steps=200, lr=0.1):\n    \"\"\"Drive the loss on a single batch towards zero; return the loss history.\n\n    The first thing to run on any new model. A model that CANNOT overfit\n    one batch has a bug - a detached graph, a frozen layer, a label\n    mismatch, a learning rate of zero - and no amount of data will fix it.\n    A model that can might still be wrong, but at least the wiring is\n    connected.\n    \"\"\"\n    optimiser = torch.optim.Adam(model.parameters(), lr=lr)\n    model.train()\n    history = []\n    for _ in range(steps):\n        optimiser.zero_grad()\n        loss = loss_fn(model(features), labels)\n        loss.backward()\n        optimiser.step()\n        history.append(loss.item())\n    return history"
+  },
+  {
+   "name": "class_weights",
+   "test_targets": [
+    "TestClassWeights"
+   ],
+   "solution": "def class_weights(labels, num_classes):\n    \"\"\"Inverse-frequency weights for an imbalanced classification problem.\n\n    Weight_c = N / (C * count_c), normalised so the mean weight is 1 - the\n    same convention as sklearn's \"balanced\". Feeding these to\n    `nn.CrossEntropyLoss(weight=...)` stops a 99%-negative dataset training\n    a model that predicts the majority class and reports 99% accuracy.\n\n    Absent classes get weight 0 rather than inf.\n    \"\"\"\n    labels = torch.as_tensor(labels)\n    counts = torch.bincount(labels, minlength=num_classes).float()\n    weights = torch.where(counts > 0, len(labels) / (num_classes * counts),\n                          torch.zeros_like(counts))\n    return weights"
+  },
+  {
+   "name": "build_loader",
+   "test_targets": [
+    "TestBuildLoader"
+   ],
+   "solution": "def build_loader(dataset, batch_size, shuffle=True, seed=0, **kwargs):\n    \"\"\"A DataLoader whose shuffling is reproducible.\n\n    Passing an explicitly seeded generator is what makes two runs see the\n    same batch order. `drop_last` matters more than it looks: a final batch\n    of size 1 makes BatchNorm raise, because it cannot compute a variance\n    from one sample.\n    \"\"\"\n    generator = torch.Generator().manual_seed(seed)\n    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,\n                      generator=generator if shuffle else None,\n                      worker_init_fn=worker_init_fn, **kwargs)"
+  }
+ ]
+}

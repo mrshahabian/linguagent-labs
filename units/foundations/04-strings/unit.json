@@ -1,0 +1,96 @@
+{
+ "id": "foundations/strings",
+ "title": "Foundations 4 - Strings and text processing",
+ "track": "foundations",
+ "order": 4,
+ "minutes": 35,
+ "tests": 18,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/foundations/strings",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/foundations/04-strings/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestShout"
+  ],
+  "2": [
+   "TestCountWords"
+  ],
+  "3": [
+   "TestReverseWords"
+  ],
+  "4": [
+   "TestIsPalindrome"
+  ],
+  "5": [
+   "TestInitials"
+  ],
+  "6": [
+   "TestSlugify"
+  ]
+ },
+ "sections": {
+  "1": [
+   "shout"
+  ],
+  "2": [
+   "count_words"
+  ],
+  "3": [
+   "reverse_words"
+  ],
+  "4": [
+   "is_palindrome"
+  ],
+  "5": [
+   "initials"
+  ],
+  "6": [
+   "slugify"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "shout",
+   "test_targets": [
+    "TestShout"
+   ],
+   "solution": "def shout(text):\n    \"\"\"Return text in all caps, with \"!!!\" appended.\"\"\"\n    return text.upper() + \"!!!\""
+  },
+  {
+   "name": "count_words",
+   "test_targets": [
+    "TestCountWords"
+   ],
+   "solution": "def count_words(sentence):\n    \"\"\"Count the words in sentence, splitting on whitespace.\"\"\"\n    return len(sentence.split())"
+  },
+  {
+   "name": "reverse_words",
+   "test_targets": [
+    "TestReverseWords"
+   ],
+   "solution": "def reverse_words(sentence):\n    \"\"\"Reverse the order of the words in sentence (not the letters).\n    \"the cat sat\" -> \"sat cat the\".\"\"\"\n    words = sentence.split()\n    words.reverse()\n    return \" \".join(words)"
+  },
+  {
+   "name": "is_palindrome",
+   "test_targets": [
+    "TestIsPalindrome"
+   ],
+   "solution": "def is_palindrome(text):\n    \"\"\"True if text reads the same forwards and backwards, ignoring case\n    and spaces. \"Never Odd or Even\" -> True.\"\"\"\n    cleaned = text.lower().replace(\" \", \"\")\n    return cleaned == cleaned[::-1]"
+  },
+  {
+   "name": "initials",
+   "test_targets": [
+    "TestInitials"
+   ],
+   "solution": "def initials(full_name):\n    \"\"\"\"Ada Lovelace\" -> \"AL\" - the first letter of each word, uppercase,\n    no separators.\"\"\"\n    return \"\".join(word[0].upper() for word in full_name.split())"
+  },
+  {
+   "name": "slugify",
+   "test_targets": [
+    "TestSlugify"
+   ],
+   "solution": "def slugify(title):\n    \"\"\"\"Hello World\" -> \"hello-world\" - lowercase, spaces become hyphens.\"\"\"\n    return title.lower().replace(\" \", \"-\")"
+  }
+ ]
+}

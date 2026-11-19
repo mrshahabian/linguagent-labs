@@ -1,0 +1,72 @@
+{
+ "id": "foundations/oop",
+ "title": "Foundations 5 - Basic OOP",
+ "track": "foundations",
+ "order": 5,
+ "minutes": 40,
+ "tests": 17,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/foundations/oop",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/foundations/05-oop/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestCar"
+  ],
+  "2": [
+   "TestBankAccount"
+  ],
+  "3": [
+   "TestEmployee"
+  ]
+ },
+ "sections": {
+  "1": [
+   "Car"
+  ],
+  "2": [
+   "BankAccount"
+  ],
+  "3": [
+   "Employee"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "Car",
+   "test_targets": [
+    "TestCar"
+   ],
+   "solution": "class Car:\n    \"\"\"A car with a make and model.\"\"\"\n\n    def __init__(self, make, model):\n        self.make = make\n        self.model = model\n\n    def describe(self):\n        \"\"\"Return \"{make} {model}\".\"\"\"\n        return f\"{self.make} {self.model}\""
+  },
+  {
+   "name": "BankAccount",
+   "test_targets": [
+    "TestBankAccount"
+   ],
+   "solution": "class BankAccount:\n    \"\"\"A bank account that tracks a balance.\"\"\"\n\n    def __init__(self, owner, balance=0):\n        self.owner = owner\n        self.balance = balance\n\n    def deposit(self, amount):\n        \"\"\"Add amount to the balance.\"\"\"\n        self.balance += amount\n\n    def withdraw(self, amount):\n        \"\"\"Subtract amount from the balance. Raise ValueError if amount\n        is more than the current balance - never go negative.\"\"\"\n        if amount > self.balance:\n            raise ValueError(\"insufficient funds\")\n        self.balance -= amount"
+  },
+  {
+   "name": "Employee",
+   "test_targets": [
+    "TestEmployee"
+   ],
+   "solution": "class Employee:\n    \"\"\"Every Employee works at the same company - that's a class\n    attribute, shared by every instance unless one overrides it.\"\"\"\n\n    company = \"Acme\"\n\n    def __init__(self, name):\n        self.name = name\n\n    def intro(self):\n        \"\"\"Return \"{name} works at {company}\".\"\"\"\n        return f\"{self.name} works at {self.company}\""
+  },
+  {
+   "name": "Animal",
+   "test_targets": [],
+   "solution": "class Animal:\n    \"\"\"The base class every animal shares an __init__ with.\"\"\"\n\n    def __init__(self, name):\n        self.name = name\n\n    def speak(self):\n        \"\"\"The generic animal sound - subclasses override this.\"\"\"\n        return \"...\""
+  },
+  {
+   "name": "Dog",
+   "test_targets": [],
+   "solution": "class Dog(Animal):\n    \"\"\"Inherits __init__ from Animal - only speak() is different.\"\"\"\n\n    def speak(self):\n        return \"Woof!\""
+  },
+  {
+   "name": "Cat",
+   "test_targets": [],
+   "solution": "class Cat(Animal):\n    \"\"\"Inherits __init__ from Animal - only speak() is different.\"\"\"\n\n    def speak(self):\n        return \"Meow!\""
+  }
+ ]
+}

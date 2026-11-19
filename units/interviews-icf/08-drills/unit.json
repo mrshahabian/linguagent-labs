@@ -1,0 +1,12 @@
+{
+ "id": "icf/drills",
+ "title": "Unit 0 - Foundations",
+ "track": "icf",
+ "order": 34,
+ "minutes": 75,
+ "tests": 27,
+ "kind": "project",
+ "app": "https://linguagent.com/courses/icf/drills",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interviews-icf/08-drills/lab.ipynb",
+ "needs": []
+}

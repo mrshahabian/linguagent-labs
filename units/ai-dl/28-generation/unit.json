@@ -1,0 +1,132 @@
+{
+ "id": "ai-dl/generation",
+ "title": "DL 7 - Decoding and sampling",
+ "track": "ai-dl",
+ "order": 24,
+ "minutes": 50,
+ "tests": 74,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/generation",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/28-generation/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestTemperature"
+  ],
+  "2": [
+   "TestTopK"
+  ],
+  "3": [
+   "TestTopP"
+  ],
+  "4": [
+   "TestRepetitionPenalty"
+  ],
+  "5": [
+   "TestSampleNextToken"
+  ],
+  "6": [
+   "TestGreedyDecode"
+  ],
+  "7": [
+   "TestPerplexity"
+  ],
+  "8": [
+   "TestShiftForCausalLm"
+  ]
+ },
+ "sections": {
+  "1": [
+   "apply_temperature"
+  ],
+  "2": [
+   "top_k_filter"
+  ],
+  "3": [
+   "top_p_filter"
+  ],
+  "4": [
+   "repetition_penalty"
+  ],
+  "5": [
+   "sample_next_token"
+  ],
+  "6": [
+   "greedy_decode",
+   "beam_search"
+  ],
+  "7": [
+   "perplexity"
+  ],
+  "8": [
+   "shift_for_causal_lm"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "apply_temperature",
+   "test_targets": [
+    "TestTemperature"
+   ],
+   "solution": "def apply_temperature(logits, temperature):\n    \"\"\"Divide logits by temperature before the softmax.\n\n    T < 1 sharpens the distribution (more deterministic), T > 1 flattens it\n    (more diverse). The reason it is applied to LOGITS and not to\n    probabilities is that dividing probabilities does not renormalise into\n    anything meaningful.\n\n    T -> 0 is greedy decoding, and is handled as a special case because the\n    division would overflow to inf/NaN.\n    \"\"\"\n    if temperature < 0:\n        raise ValueError(\"temperature must be non-negative\")\n    if temperature == 0:\n        out = torch.full_like(logits, torch.finfo(logits.dtype).min)\n        out.scatter_(-1, logits.argmax(-1, keepdim=True), 0.0)\n        return out\n    return logits / temperature"
+  },
+  {
+   "name": "top_k_filter",
+   "test_targets": [
+    "TestTopK"
+   ],
+   "solution": "def top_k_filter(logits, k):\n    \"\"\"Keep the k highest logits, set the rest to -inf.\n\n    Truncating the tail is what stops a model occasionally sampling a\n    genuinely absurd token: over a 50k vocabulary the tail holds most of\n    the probability mass by count, even when each token is individually\n    unlikely.\n\n    k >= vocab size is a no-op rather than an error, which is what callers\n    sweeping k expect.\n    \"\"\"\n    if k <= 0:\n        raise ValueError(\"k must be positive\")\n    k = min(k, logits.shape[-1])\n    threshold = logits.topk(k, dim=-1).values[..., -1, None]\n    return logits.masked_fill(logits < threshold,\n                              torch.finfo(logits.dtype).min)"
+  },
+  {
+   "name": "top_p_filter",
+   "test_targets": [
+    "TestTopP"
+   ],
+   "solution": "def top_p_filter(logits, p):\n    \"\"\"Nucleus sampling: keep the smallest set of tokens with mass >= p.\n\n    Better than top-k because the cut adapts to the distribution. Where the\n    model is confident the nucleus is one or two tokens; where it is\n    genuinely uncertain it widens. Top-k cannot do that - a fixed k is\n    either too tight in the first case or too loose in the second.\n\n    The most-likely token is ALWAYS kept, even when it alone exceeds p.\n    Dropping it would leave nothing to sample from.\n    \"\"\"\n    if not 0 < p <= 1:\n        raise ValueError(\"p must be in (0, 1]\")\n    ordered, indices = logits.sort(dim=-1, descending=True)\n    cumulative = ordered.softmax(-1).cumsum(-1)\n    # Remove everything strictly after the token that crosses p. Shifting\n    # right is what keeps the crossing token itself.\n    remove = cumulative - ordered.softmax(-1) >= p\n    remove[..., 0] = False\n    remove = remove.scatter(-1, indices, remove)\n    return logits.masked_fill(remove, torch.finfo(logits.dtype).min)"
+  },
+  {
+   "name": "repetition_penalty",
+   "test_targets": [
+    "TestRepetitionPenalty"
+   ],
+   "solution": "def repetition_penalty(logits, generated, penalty=1.1):\n    \"\"\"Divide the logits of already-generated tokens (the CTRL formulation).\n\n    The subtlety is the sign: for a POSITIVE logit you divide, for a\n    NEGATIVE one you multiply. Dividing a negative logit by 1.1 makes it\n    larger, which rewards the repetition you were trying to suppress.\n    Getting this backwards is a real bug in published code.\n    \"\"\"\n    if penalty <= 0:\n        raise ValueError(\"penalty must be positive\")\n    out = logits.clone()\n    for row, tokens in enumerate(generated):\n        if len(tokens) == 0:\n            continue\n        unique = torch.as_tensor(tokens, device=logits.device,\n                                 dtype=torch.long).unique()\n        selected = out[row, unique]\n        out[row, unique] = torch.where(selected > 0, selected / penalty,\n                                       selected * penalty)\n    return out"
+  },
+  {
+   "name": "sample_next_token",
+   "test_targets": [
+    "TestSampleNextToken"
+   ],
+   "solution": "def sample_next_token(logits, temperature=1.0, top_k=None, top_p=None,\n                      generator=None):\n    \"\"\"Apply the filters in the standard order, then sample one token.\n\n    Order matters and is the thing to state out loud: temperature FIRST\n    (it changes the shape the filters see), then top-k, then top-p, then\n    softmax and sample. Filtering before scaling gives a different, and\n    wrong, distribution.\n    \"\"\"\n    logits = apply_temperature(logits, temperature)\n    if top_k is not None:\n        logits = top_k_filter(logits, top_k)\n    if top_p is not None:\n        logits = top_p_filter(logits, top_p)\n    probabilities = logits.softmax(-1)\n    return torch.multinomial(probabilities, num_samples=1,\n                             generator=generator).squeeze(-1)"
+  },
+  {
+   "name": "greedy_decode",
+   "test_targets": [
+    "TestGreedyDecode"
+   ],
+   "solution": "def greedy_decode(step_fn, prompt, max_new_tokens, eos_token=None):\n    \"\"\"Decode greedily, stopping at eos_token.\n\n    `step_fn(tokens) -> logits` for the NEXT token, so this works against a\n    real model or a stub. Greedy is deterministic and therefore the only\n    decode you can unit-test exactly - which is why it is the one to reach\n    for when debugging a generation bug.\n\n    Greedy is not the highest-probability SEQUENCE: picking the best token\n    at each step can walk into a dead end that beam search avoids. That\n    distinction is a standard interview question.\n    \"\"\"\n    tokens = list(prompt)\n    for _ in range(max_new_tokens):\n        logits = step_fn(tokens)\n        next_token = int(logits.argmax(-1))\n        tokens.append(next_token)\n        if eos_token is not None and next_token == eos_token:\n            break\n    return tokens"
+  },
+  {
+   "name": "beam_search",
+   "test_targets": [
+    "TestBeamSearch"
+   ],
+   "solution": "def beam_search(step_fn, prompt, max_new_tokens, beam_width=3,\n                eos_token=None, length_penalty=1.0):\n    \"\"\"Keep the `beam_width` highest-scoring sequences at each step.\n\n    Scores are summed LOG-probabilities, not multiplied probabilities:\n    multiplying 50 numbers below 1 underflows float32 long before the\n    sequence ends.\n\n    `length_penalty` divides by len**alpha before comparing. Without it,\n    beam search has a well-known bias towards short sequences, because\n    every extra token adds another negative log-probability.\n    \"\"\"\n    beams = [(0.0, list(prompt), False)]\n    for _ in range(max_new_tokens):\n        if all(finished for _, _, finished in beams):\n            break\n        candidates = []\n        for score, tokens, finished in beams:\n            if finished:\n                candidates.append((score, tokens, True))\n                continue\n            log_probabilities = F.log_softmax(step_fn(tokens).float(), dim=-1)\n            top = log_probabilities.topk(beam_width)\n            for value, index in zip(top.values.tolist(),\n                                    top.indices.tolist()):\n                candidates.append((score + value, tokens + [index],\n                                   index == eos_token))\n        candidates.sort(\n            key=lambda c: c[0] / (len(c[1]) ** length_penalty), reverse=True)\n        beams = candidates[:beam_width]\n    return max(beams,\n               key=lambda c: c[0] / (len(c[1]) ** length_penalty))[1]"
+  },
+  {
+   "name": "perplexity",
+   "test_targets": [
+    "TestPerplexity"
+   ],
+   "solution": "def perplexity(logits, targets, ignore_index=-100):\n    \"\"\"exp(mean cross-entropy) over the non-ignored positions.\n\n    logits: (B, L, V), targets: (B, L).\n\n    Perplexity is \"how many tokens is the model effectively choosing\n    between\". A uniform model over V tokens has perplexity exactly V, which\n    is the sanity check to run first - and the reason `ignore_index`\n    matters: counting padded positions as correct makes perplexity look far\n    better than it is.\n    \"\"\"\n    loss = F.cross_entropy(logits.reshape(-1, logits.shape[-1]),\n                           targets.reshape(-1), ignore_index=ignore_index)\n    return loss.exp()"
+  },
+  {
+   "name": "shift_for_causal_lm",
+   "test_targets": [
+    "TestShiftForCausalLm"
+   ],
+   "solution": "def shift_for_causal_lm(input_ids, ignore_index=-100):\n    \"\"\"Build (inputs, labels) for next-token prediction.\n\n    Position i must predict token i+1, so the labels are the inputs shifted\n    left by one. The final position has nothing to predict and is masked\n    out with ignore_index.\n\n    Off-by-one here is the most expensive bug in language modelling,\n    because it does not crash: the model learns to copy its input, the loss\n    drops beautifully, and generation produces fluent nonsense.\n    \"\"\"\n    if input_ids.shape[-1] < 2:\n        raise ValueError(\"need at least two tokens to build a shifted target\")\n    inputs = input_ids[..., :-1]\n    labels = input_ids[..., 1:].clone()\n    return inputs, labels"
+  }
+ ]
+}

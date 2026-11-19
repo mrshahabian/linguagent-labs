@@ -1,0 +1,101 @@
+{
+ "id": "ai-dl/evaluation",
+ "title": "DL 11 - Evaluation metrics",
+ "track": "ai-dl",
+ "order": 28,
+ "minutes": 50,
+ "tests": 20,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/evaluation",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/32-evaluation/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestPrecisionRecallF1"
+  ],
+  "2": [
+   "TestAveragePrecision"
+  ],
+  "3": [
+   "TestBleuN"
+  ],
+  "4": [
+   "TestRougeL"
+  ],
+  "5": [
+   "TestRecallAtK"
+  ]
+ },
+ "sections": {
+  "1": [
+   "precision_recall_f1"
+  ],
+  "2": [
+   "average_precision"
+  ],
+  "3": [
+   "_ngrams",
+   "bleu_n"
+  ],
+  "4": [
+   "_lcs_length",
+   "rouge_l"
+  ],
+  "5": [
+   "recall_at_k"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "precision_recall_f1",
+   "test_targets": [
+    "TestPrecisionRecallF1"
+   ],
+   "solution": "def precision_recall_f1(predictions, labels):\n    \"\"\"Binary precision, recall and F1 from 0/1 predictions and labels.\n\n    Precision answers \"of what I predicted positive, how much was\n    right\" - it is what a false-positive-heavy model gets punished for.\n    Recall answers \"of what was actually positive, how much did I find\"\n    - it is what a false-negative-heavy (overly conservative) model gets\n    punished for. Neither alone tells you whether a model is usable; a\n    model that predicts everything positive gets perfect recall and\n    terrible precision. F1 is their harmonic mean specifically because\n    the harmonic mean is dominated by the smaller of the two - a model\n    cannot hide a bad precision behind a great recall in its F1 score\n    the way an arithmetic mean would let it.\n    \"\"\"\n    true_positive = sum(1 for p, y in zip(predictions, labels) if p == 1 and y == 1)\n    false_positive = sum(1 for p, y in zip(predictions, labels) if p == 1 and y == 0)\n    false_negative = sum(1 for p, y in zip(predictions, labels) if p == 0 and y == 1)\n\n    precision = true_positive / (true_positive + false_positive) if (true_positive + false_positive) else 0.0\n    recall = true_positive / (true_positive + false_negative) if (true_positive + false_negative) else 0.0\n    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0\n    return precision, recall, f1"
+  },
+  {
+   "name": "average_precision",
+   "test_targets": [
+    "TestAveragePrecision"
+   ],
+   "solution": "def average_precision(confidences, labels):\n    \"\"\"Area under the precision-recall curve for one class - the \"AP\" in mAP.\n\n    Sort predictions by confidence, descending, and walk down the list\n    computing precision and recall as if the threshold were placed right\n    after each prediction. AP is the sum, over every step where recall\n    INCREASES, of (recall_increase * precision_at_that_step) - the same\n    non-interpolated definition scikit-learn's average_precision_score\n    uses. mAP, the metric actually reported for detection/retrieval\n    benchmarks, is simply the mean of this number across every class.\n\n    A confident, correct model front-loads its true positives, so\n    precision stays high while recall climbs - a high AP. A model that\n    is equally likely to be right or wrong at any confidence level earns\n    a low AP even with the same overall accuracy, because AP specifically\n    rewards RANKING true positives ahead of false positives.\n    \"\"\"\n    total_positive = sum(labels)\n    if total_positive == 0:\n        return 0.0\n    order = sorted(range(len(confidences)), key=lambda i: confidences[i], reverse=True)\n    true_positive = 0\n    false_positive = 0\n    ap = 0.0\n    previous_recall = 0.0\n    for i in order:\n        if labels[i] == 1:\n            true_positive += 1\n        else:\n            false_positive += 1\n        precision = true_positive / (true_positive + false_positive)\n        recall = true_positive / total_positive\n        ap += (recall - previous_recall) * precision\n        previous_recall = recall\n    return ap"
+  },
+  {
+   "name": "_ngrams",
+   "test_targets": [
+    "TestBleuN"
+   ],
+   "solution": "def _ngrams(tokens, n):\n    return Counter(tuple(tokens[i:i + n]) for i in range(len(tokens) - n + 1))"
+  },
+  {
+   "name": "bleu_n",
+   "test_targets": [
+    "TestBleuN"
+   ],
+   "solution": "def bleu_n(candidate, reference, n=4):\n    \"\"\"Single-reference BLEU-n: n-gram precision, geometrically averaged, with\n    a brevity penalty.\n\n    For each order k in 1..n, count how many of candidate's k-grams\n    appear in reference (CLIPPED - a k-gram can't count more times than\n    it actually occurs in the reference, or repeating one good word\n    would trivially inflate the score). The geometric mean of these\n    per-order precisions rewards a candidate that matches at EVERY\n    granularity, not just individual words - a candidate with all the\n    right words in the wrong order scores well on 1-grams but collapses\n    on 4-grams.\n\n    The brevity penalty exists because n-gram precision alone rewards\n    being short: a one-word candidate that happens to appear in the\n    reference gets 100% precision. BP < 1 whenever the candidate is\n    shorter than the reference, exactly cancelling that incentive.\n    \"\"\"\n    if not candidate:\n        return 0.0\n    precisions = []\n    for k in range(1, n + 1):\n        if len(candidate) < k:\n            precisions.append(0.0)\n            continue\n        cand_ngrams = _ngrams(candidate, k)\n        ref_ngrams = _ngrams(reference, k)\n        clipped = sum(min(count, ref_ngrams[gram]) for gram, count in cand_ngrams.items())\n        total = sum(cand_ngrams.values())\n        precisions.append(clipped / total if total else 0.0)\n    if min(precisions) == 0.0:\n        return 0.0\n    geometric_mean = math.exp(sum(math.log(p) for p in precisions) / n)\n    brevity_penalty = 1.0 if len(candidate) >= len(reference) else math.exp(1 - len(reference) / len(candidate))\n    return brevity_penalty * geometric_mean"
+  },
+  {
+   "name": "_lcs_length",
+   "test_targets": [
+    "TestRougeL"
+   ],
+   "solution": "def _lcs_length(a, b):\n    dp = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]\n    for i in range(1, len(a) + 1):\n        for j in range(1, len(b) + 1):\n            if a[i - 1] == b[j - 1]:\n                dp[i][j] = dp[i - 1][j - 1] + 1\n            else:\n                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])\n    return dp[-1][-1]"
+  },
+  {
+   "name": "rouge_l",
+   "test_targets": [
+    "TestRougeL"
+   ],
+   "solution": "def rouge_l(candidate, reference):\n    \"\"\"ROUGE-L F1: precision and recall built from the longest common subsequence.\n\n    Unlike BLEU's n-grams, the LCS does not require matched words to be\n    CONSECUTIVE - only in the same relative order - so ROUGE-L gives\n    partial credit to a candidate that has the right content in the\n    right order but with extra or missing words interspersed, which\n    n-gram precision penalises harshly. This is why summarisation is\n    usually scored with ROUGE (recall of the reference's content\n    matters most) while translation is usually scored with BLEU\n    (precision of exact phrasing matters most).\n    \"\"\"\n    if not candidate or not reference:\n        return 0.0\n    lcs = _lcs_length(candidate, reference)\n    precision = lcs / len(candidate)\n    recall = lcs / len(reference)\n    if precision + recall == 0:\n        return 0.0\n    return 2 * precision * recall / (precision + recall)"
+  },
+  {
+   "name": "recall_at_k",
+   "test_targets": [
+    "TestRecallAtK"
+   ],
+   "solution": "def recall_at_k(query_embed, gallery_embeds, correct_index, k):\n    \"\"\"True if the correct gallery item is among the top-k nearest by cosine similarity.\n\n    This is the metric an embedding-based retrieval or face-verification\n    system is actually judged on - not \"is the top-1 result correct\"\n    (recall@1, a special case of this) but \"does the right answer show\n    up somewhere in what the user would actually see\" (the first page\n    of results, the top-k shortlist). Averaging this indicator over many\n    queries gives Recall@k, the number usually reported in a retrieval\n    paper's results table.\n    \"\"\"\n    query = query_embed / query_embed.norm().clamp_min(1e-8)\n    gallery = gallery_embeds / gallery_embeds.norm(dim=-1, keepdim=True).clamp_min(1e-8)\n    similarities = gallery @ query\n    top_k_indices = torch.topk(similarities, k).indices\n    return correct_index in top_k_indices.tolist()"
+  }
+ ]
+}

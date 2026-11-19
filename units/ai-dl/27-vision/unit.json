@@ -1,0 +1,145 @@
+{
+ "id": "ai-dl/vision",
+ "title": "DL 6 - Vision and video",
+ "track": "ai-dl",
+ "order": 23,
+ "minutes": 50,
+ "tests": 72,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/vision",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/27-vision/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestConvOutputSize"
+  ],
+  "2": [
+   "TestReceptiveField"
+  ],
+  "3": [
+   "TestConv2dViaUnfold"
+  ],
+  "4": [
+   "TestBoxIou"
+  ],
+  "5": [
+   "TestNms"
+  ],
+  "6": [
+   "TestPatchify"
+  ],
+  "7": [
+   "TestDepthwiseSeparable"
+  ],
+  "8": [
+   "TestNormaliseBatch"
+  ],
+  "9": [
+   "TestSampleFrames"
+  ]
+ },
+ "sections": {
+  "1": [
+   "conv_output_size"
+  ],
+  "2": [
+   "receptive_field"
+  ],
+  "3": [
+   "conv2d_via_unfold"
+  ],
+  "4": [
+   "box_iou"
+  ],
+  "5": [
+   "nms"
+  ],
+  "6": [
+   "patchify"
+  ],
+  "7": [
+   "depthwise_separable_params"
+  ],
+  "8": [
+   "normalise_batch"
+  ],
+  "9": [
+   "sample_frames",
+   "frame_difference"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "conv_output_size",
+   "test_targets": [
+    "TestConvOutputSize"
+   ],
+   "solution": "def conv_output_size(size, kernel, stride=1, padding=0, dilation=1):\n    \"\"\"Output length of a convolution along one axis.\n\n        out = floor((size + 2*padding - dilation*(kernel-1) - 1) / stride) + 1\n\n    Worth memorising, because you will be asked to compute a feature-map\n    size on a whiteboard. Two corollaries to have ready:\n      - \"same\" padding for an odd kernel with stride 1 is (kernel-1)//2.\n      - Dilation enlarges the kernel's REACH without adding parameters:\n        an effective kernel of dilation*(kernel-1)+1.\n\n    Raises ValueError when the kernel does not fit, rather than returning\n    a negative size that fails much later inside a matmul.\n    \"\"\"\n    effective = dilation * (kernel - 1) + 1\n    out = (size + 2 * padding - effective) // stride + 1\n    if out <= 0:\n        raise ValueError(\n            f\"kernel {kernel} (effective {effective}) does not fit in \"\n            f\"{size} with padding {padding}\")\n    return out"
+  },
+  {
+   "name": "receptive_field",
+   "test_targets": [
+    "TestReceptiveField"
+   ],
+   "solution": "def receptive_field(layers):\n    \"\"\"Receptive field of a stack of [(kernel, stride), ...] layers.\n\n        r_0 = 1;  r_i = r_{i-1} + (k_i - 1) * jump_{i-1}\n        jump_i = jump_{i-1} * s_i\n\n    The jump (the cumulative stride) is the part people forget: a 3x3 after\n    two stride-2 layers sees 4 input pixels per step, not 1.\n\n    Why it matters: if your receptive field is smaller than the object you\n    are detecting, no amount of training fixes it - the network physically\n    cannot see the whole thing. This is the argument for dilated\n    convolutions in segmentation.\n    \"\"\"\n    field, jump = 1, 1\n    for kernel, stride in layers:\n        field += (kernel - 1) * jump\n        jump *= stride\n    return field"
+  },
+  {
+   "name": "conv2d_via_unfold",
+   "test_targets": [
+    "TestConv2dViaUnfold"
+   ],
+   "solution": "def conv2d_via_unfold(x, weight, bias=None, stride=1, padding=0):\n    \"\"\"2-D convolution written as one matrix multiply (im2col).\n\n    x: (B, C, H, W), weight: (O, C, kh, kw) -> (B, O, H', W').\n\n    `unfold` extracts every sliding patch into a column, turning the\n    convolution into (O, C*kh*kw) @ (C*kh*kw, L). This is how convolution\n    is ACTUALLY implemented on hardware: GEMM is the one kernel every\n    accelerator is fast at, so everything gets reshaped into one.\n\n    The cost is memory - patches overlap, so the column matrix is kh*kw\n    times larger than the input. That trade-off is the whole reason\n    implicit-GEMM and FlashAttention-style fused kernels exist.\n    \"\"\"\n    batch, _, height, width = x.shape\n    out_channels, in_channels, kh, kw = weight.shape\n    out_h = conv_output_size(height, kh, stride, padding)\n    out_w = conv_output_size(width, kw, stride, padding)\n\n    columns = F.unfold(x, (kh, kw), stride=stride, padding=padding)\n    # (B, C*kh*kw, L) with the weight flattened to (O, C*kh*kw).\n    out = weight.reshape(out_channels, -1) @ columns\n    out = out.reshape(batch, out_channels, out_h, out_w)\n    if bias is not None:\n        out = out + bias.reshape(1, -1, 1, 1)\n    return out"
+  },
+  {
+   "name": "box_iou",
+   "test_targets": [
+    "TestBoxIou"
+   ],
+   "solution": "def box_iou(boxes_a, boxes_b):\n    \"\"\"IoU between every pair of boxes in (x1, y1, x2, y2) format.\n\n    a: (N, 4), b: (M, 4) -> (N, M).\n\n    The detection warm-up question. `clamp(min=0)` on the overlap is what\n    handles boxes that do not intersect - without it a negative width times\n    a negative height gives a positive \"intersection\", which is a genuinely\n    hard bug to see in a metric.\n    \"\"\"\n    area_a = (boxes_a[:, 2] - boxes_a[:, 0]) * (boxes_a[:, 3] - boxes_a[:, 1])\n    area_b = (boxes_b[:, 2] - boxes_b[:, 0]) * (boxes_b[:, 3] - boxes_b[:, 1])\n\n    top_left = torch.max(boxes_a[:, None, :2], boxes_b[None, :, :2])\n    bottom_right = torch.min(boxes_a[:, None, 2:], boxes_b[None, :, 2:])\n    overlap = (bottom_right - top_left).clamp(min=0)\n    intersection = overlap[..., 0] * overlap[..., 1]\n\n    union = area_a[:, None] + area_b[None, :] - intersection\n    return intersection / union.clamp(min=1e-9)"
+  },
+  {
+   "name": "nms",
+   "test_targets": [
+    "TestNms"
+   ],
+   "solution": "def nms(boxes, scores, iou_threshold=0.5):\n    \"\"\"Non-maximum suppression. Returns kept indices, highest score first.\n\n    Take the best box, drop everything overlapping it by more than the\n    threshold, repeat. Every detector ends with this, and it is asked in\n    interviews because the naive version is easy and the vectorised one\n    shows you can think in tensors.\n\n    Note the threshold is exclusive: IoU exactly equal to the threshold is\n    kept. Conventions differ, so say which one you are using.\n    \"\"\"\n    if boxes.numel() == 0:\n        return torch.zeros(0, dtype=torch.long, device=boxes.device)\n    order = scores.argsort(descending=True)\n    keep = []\n    while order.numel() > 0:\n        best = order[0]\n        keep.append(best)\n        if order.numel() == 1:\n            break\n        ious = box_iou(boxes[best][None], boxes[order[1:]])[0]\n        order = order[1:][ious <= iou_threshold]\n    return torch.stack(keep)"
+  },
+  {
+   "name": "patchify",
+   "test_targets": [
+    "TestPatchify"
+   ],
+   "solution": "def patchify(images, patch_size):\n    \"\"\"(B, C, H, W) -> (B, num_patches, C*patch*patch), row-major.\n\n    The first layer of a Vision Transformer: cut the image into\n    non-overlapping patches and flatten each one into a token. A 224x224\n    image with 16x16 patches gives 196 tokens - which, at O(L^2) attention,\n    is why ViT input resolution is such a constrained choice.\n\n    unfold with stride == kernel is exactly \"non-overlapping patches\".\n    \"\"\"\n    batch, channels, height, width = images.shape\n    if height % patch_size or width % patch_size:\n        raise ValueError(\n            f\"{height}x{width} is not divisible by patch size {patch_size}\")\n    patches = F.unfold(images, patch_size, stride=patch_size)\n    # (B, C*p*p, L) -> (B, L, C*p*p): tokens first, like a transformer wants.\n    return patches.transpose(1, 2)"
+  },
+  {
+   "name": "depthwise_separable_params",
+   "test_targets": [
+    "TestDepthwiseSeparable"
+   ],
+   "solution": "def depthwise_separable_params(in_channels, out_channels, kernel_size):\n    \"\"\"(standard, separable) parameter counts, excluding bias.\n\n    Standard:  out * in * k * k\n    Separable: in * k * k  (depthwise)  +  in * out  (pointwise 1x1)\n\n    The saving is roughly 1/out + 1/k^2 - about 9x for a 3x3 with many\n    channels. This one arithmetic fact is MobileNet, and it is the standard\n    \"how would you make this model run on a phone\" answer.\n    \"\"\"\n    standard = out_channels * in_channels * kernel_size * kernel_size\n    separable = (in_channels * kernel_size * kernel_size\n                 + in_channels * out_channels)\n    return standard, separable"
+  },
+  {
+   "name": "normalise_batch",
+   "test_targets": [
+    "TestNormaliseBatch"
+   ],
+   "solution": "def normalise_batch(images, mean, std):\n    \"\"\"Per-channel normalisation of a (B, C, H, W) batch.\n\n    The trap is the shape: mean and std are (C,), and subtracting them\n    directly broadcasts against the LAST axis - the width - silently\n    normalising the wrong dimension on a square image and crashing on a\n    non-square one. They must be reshaped to (1, C, 1, 1).\n\n    This is the single most common bug in a hand-written preprocessing\n    pipeline, and the reason the tests here use a non-square image.\n    \"\"\"\n    mean = torch.as_tensor(mean, dtype=images.dtype,\n                           device=images.device).reshape(1, -1, 1, 1)\n    std = torch.as_tensor(std, dtype=images.dtype,\n                          device=images.device).reshape(1, -1, 1, 1)\n    return (images - mean) / std"
+  },
+  {
+   "name": "sample_frames",
+   "test_targets": [
+    "TestSampleFrames"
+   ],
+   "solution": "def sample_frames(num_frames, num_samples):\n    \"\"\"Indices of `num_samples` frames spread evenly over a clip.\n\n    Video models take a fixed number of frames; real clips have arbitrary\n    lengths. Uniform sampling over the whole clip beats taking the first N,\n    which throws away everything after the first second.\n\n    Short clips are handled by repeating frames rather than raising, since\n    a data pipeline that crashes on one short video is worse than one that\n    pads. The midpoint offset (+0.5) centres each sample in its segment\n    instead of biasing every one towards the start.\n    \"\"\"\n    if num_samples <= 0:\n        raise ValueError(\"num_samples must be positive\")\n    if num_frames <= 0:\n        raise ValueError(\"num_frames must be positive\")\n    positions = (torch.arange(num_samples, dtype=torch.float32) + 0.5)\n    indices = (positions * num_frames / num_samples).long()\n    return indices.clamp(max=num_frames - 1)"
+  },
+  {
+   "name": "frame_difference",
+   "test_targets": [
+    "TestFrameDifference"
+   ],
+   "solution": "def frame_difference(clip, stride=1):\n    \"\"\"Temporal difference of a (T, C, H, W) clip -> (T - stride, C, H, W).\n\n    The cheapest possible motion feature, and a genuinely useful baseline:\n    a two-stream network's optical-flow branch is doing a more expensive\n    version of this. Worth being able to say that a large part of what a\n    video model learns from \"motion\" is available from frame differences at\n    almost no cost.\n    \"\"\"\n    if stride < 1:\n        raise ValueError(\"stride must be at least 1\")\n    if clip.shape[0] <= stride:\n        raise ValueError(\n            f\"clip of {clip.shape[0]} frames is too short for stride {stride}\")\n    return clip[stride:] - clip[:-stride]"
+  }
+ ]
+}

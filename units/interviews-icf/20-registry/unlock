@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Usage: ./unlock N   -- reveals the spec and tests for level N
+set -e
+cd "$(dirname "$0")"
+N="$1"
+if [[ ! "$N" =~ ^[1-5]$ ]]; then
+  echo "usage: ./unlock N   (N = 1..5)"
+  exit 1
+fi
+cp "locked/level${N}.md" "spec/level${N}.md"
+cp "locked/test_level${N}.py" "tests/test_level${N}.py"
+echo "Unlocked level ${N}."
+echo "  spec:  spec/level${N}.md"
+echo "  tests: tests/test_level${N}.py"

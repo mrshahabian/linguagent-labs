@@ -1,0 +1,12 @@
+{
+ "id": "icf/registry",
+ "title": "Unit 2 - Build from a spec I",
+ "track": "icf",
+ "order": 36,
+ "minutes": 90,
+ "tests": 45,
+ "kind": "project",
+ "app": "https://linguagent.com/courses/icf/registry",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interviews-icf/20-registry/lab.ipynb",
+ "needs": []
+}

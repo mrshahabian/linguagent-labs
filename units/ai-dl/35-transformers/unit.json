@@ -1,0 +1,90 @@
+{
+ "id": "ai-dl/transformers",
+ "title": "DL 12 - Assembling transformers end to end",
+ "track": "ai-dl",
+ "order": 29,
+ "minutes": 55,
+ "tests": 19,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/ai-dl/transformers",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/ai-dl/35-transformers/lab.ipynb",
+ "needs": [
+  "torch"
+ ],
+ "checks": {
+  "1": [
+   "TestSinusoidalPositionalEncoding"
+  ],
+  "2": [
+   "TestGPTModel"
+  ],
+  "3": [
+   "TestCrossAttentionDecoderBlock"
+  ],
+  "4": [
+   "TestCountTransformerParameters"
+  ],
+  "5": [
+   "TestGenerateGreedy"
+  ]
+ },
+ "sections": {
+  "1": [
+   "sinusoidal_positional_encoding"
+  ],
+  "2": [
+   "GPTModel"
+  ],
+  "3": [
+   "CrossAttentionDecoderBlock"
+  ],
+  "4": [
+   "count_transformer_parameters"
+  ],
+  "5": [
+   "generate_greedy"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "sinusoidal_positional_encoding",
+   "test_targets": [
+    "TestSinusoidalPositionalEncoding"
+   ],
+   "solution": "def sinusoidal_positional_encoding(seq_len, embed_dim):\n    \"\"\"The original Transformer paper's fixed (non-learned) position encoding.\n\n    Every even dimension gets sin(pos / 10000^(2i/d)), every odd dimension\n    gets cos of the same argument. Two properties make this a reasonable\n    choice instead of a learned embedding table: it needs no parameters, and\n    it extrapolates to sequence lengths never seen in training (a learned\n    absolute-position table has no row for position 10001 if it only ever\n    saw sequences up to length 10000).\n\n    Contrast with module 26 (attention): RoPE rotates Q/K INSIDE attention\n    based on relative offset; this instead produces a fixed per-position\n    vector ADDED to the token embedding before any attention happens. Both\n    solve the same problem - attention itself has no notion of order - but\n    RoPE encodes relative position implicitly in the dot product, while this\n    encodes absolute position explicitly in the input.\n    \"\"\"\n    position = torch.arange(seq_len).unsqueeze(1).float()\n    div_term = torch.exp(torch.arange(0, embed_dim, 2).float()\n                          * (-math.log(10000.0) / embed_dim))\n    encoding = torch.zeros(seq_len, embed_dim)\n    encoding[:, 0::2] = torch.sin(position * div_term)\n    encoding[:, 1::2] = torch.cos(position * div_term)\n    return encoding"
+  },
+  {
+   "name": "TransformerBlock",
+   "test_targets": [],
+   "solution": "class TransformerBlock(nn.Module):\n    \"\"\"Pre-norm decoder block: x + self_attn(norm(x)), then x + mlp(norm(x)).\n\n    Identical shape to module 26's TransformerBlock - repeated here because\n    each module in this repo is self-contained, not because it's a new\n    idea. GPTModel below stacks N of these.\n    \"\"\"\n\n    def __init__(self, embed_dim, num_heads, mlp_ratio=4):\n        super().__init__()\n        self.norm1 = nn.LayerNorm(embed_dim)\n        self.attention = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)\n        self.norm2 = nn.LayerNorm(embed_dim)\n        self.mlp = nn.Sequential(\n            nn.Linear(embed_dim, embed_dim * mlp_ratio),\n            nn.GELU(),\n            nn.Linear(embed_dim * mlp_ratio, embed_dim),\n        )\n\n    def forward(self, x, causal_mask):\n        normed = self.norm1(x)\n        attended, _ = self.attention(normed, normed, normed, attn_mask=causal_mask, need_weights=False)\n        x = x + attended\n        return x + self.mlp(self.norm2(x))"
+  },
+  {
+   "name": "GPTModel",
+   "test_targets": [
+    "TestGPTModel"
+   ],
+   "solution": "class GPTModel(nn.Module):\n    \"\"\"A minimal decoder-only language model: embed, stack blocks, un-embed.\n\n    Three pieces the individual attention primitives in module 26 don't\n    show on their own: a LEARNED positional embedding added to the token\n    embedding, N transformer blocks actually stacked in an nn.ModuleList\n    (not just one), and WEIGHT TYING between the input embedding and the\n    output projection - self.lm_head.weight IS self.token_embedding.weight,\n    the same tensor, not a copy. Tying works because both have shape\n    (vocab_size, embed_dim): the embedding looks a row up by index, the\n    untied head would learn a separate (vocab_size, embed_dim) matrix to\n    project back to vocab logits - tying assumes the same matrix is a\n    reasonable answer for both directions, and roughly halves the\n    parameters spent on the vocabulary.\n    \"\"\"\n\n    def __init__(self, vocab_size, embed_dim, num_layers, num_heads, max_seq_len, mlp_ratio=4):\n        super().__init__()\n        self.token_embedding = nn.Embedding(vocab_size, embed_dim)\n        self.position_embedding = nn.Embedding(max_seq_len, embed_dim)\n        self.blocks = nn.ModuleList([\n            TransformerBlock(embed_dim, num_heads, mlp_ratio) for _ in range(num_layers)\n        ])\n        self.final_norm = nn.LayerNorm(embed_dim)\n        self.lm_head = nn.Linear(embed_dim, vocab_size, bias=False)\n        self.lm_head.weight = self.token_embedding.weight\n\n    def forward(self, input_ids):\n        batch, seq_len = input_ids.shape\n        positions = torch.arange(seq_len, device=input_ids.device)\n        x = self.token_embedding(input_ids) + self.position_embedding(positions)\n        causal_mask = torch.triu(\n            torch.full((seq_len, seq_len), float(\"-inf\"), device=input_ids.device), diagonal=1\n        )\n        for block in self.blocks:\n            x = block(x, causal_mask)\n        x = self.final_norm(x)\n        return self.lm_head(x)"
+  },
+  {
+   "name": "CrossAttentionDecoderBlock",
+   "test_targets": [
+    "TestCrossAttentionDecoderBlock"
+   ],
+   "solution": "class CrossAttentionDecoderBlock(nn.Module):\n    \"\"\"A seq2seq decoder block: self-attention, THEN cross-attention, THEN an MLP.\n\n    Three residual sublayers instead of GPTModel's two - the middle one is\n    new. Self-attention (causal, over the target sequence built so far)\n    lets the decoder look at its own previous outputs; cross-attention\n    (queries from the target sequence, keys/values from the ENCODER's\n    output) is how information about the source sequence enters the\n    decoder at all - exactly the same mechanic as module 31's VLM\n    cross-attention, applied here between a source and target sequence in\n    the same modality (e.g. translation) instead of between text and image\n    patches.\n    \"\"\"\n\n    def __init__(self, embed_dim, num_heads, mlp_ratio=4):\n        super().__init__()\n        self.norm1 = nn.LayerNorm(embed_dim)\n        self.self_attention = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)\n        self.norm2 = nn.LayerNorm(embed_dim)\n        self.cross_attention = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)\n        self.norm3 = nn.LayerNorm(embed_dim)\n        self.mlp = nn.Sequential(\n            nn.Linear(embed_dim, embed_dim * mlp_ratio),\n            nn.GELU(),\n            nn.Linear(embed_dim * mlp_ratio, embed_dim),\n        )\n\n    def forward(self, x, encoder_output, causal_mask):\n        normed = self.norm1(x)\n        self_attended, _ = self.self_attention(normed, normed, normed, attn_mask=causal_mask, need_weights=False)\n        x = x + self_attended\n\n        normed = self.norm2(x)\n        cross_attended, _ = self.cross_attention(normed, encoder_output, encoder_output, need_weights=False)\n        x = x + cross_attended\n\n        return x + self.mlp(self.norm3(x))"
+  },
+  {
+   "name": "count_transformer_parameters",
+   "test_targets": [
+    "TestCountTransformerParameters"
+   ],
+   "solution": "def count_transformer_parameters(vocab_size, embed_dim, num_layers, max_seq_len, mlp_ratio=4):\n    \"\"\"Closed-form parameter count matching GPTModel exactly, for the same sizes.\n\n    Per block: attention is 4 projections of size (embed_dim, embed_dim)\n    plus biases (Q, K, V, output) = 4 * (embed_dim^2 + embed_dim) - this\n    total does NOT depend on num_heads, since splitting into heads only\n    reshapes the same weight matrices, it doesn't add parameters. The MLP\n    is two linears expanding by mlp_ratio, plus their biases; two\n    LayerNorms contribute 2 * embed_dim each (weight and bias).\n\n    The token embedding and the tied output head together cost ONE\n    (vocab_size * embed_dim) matrix, not two - that's the point of tying.\n    The position embedding is untied and separate, costing\n    (max_seq_len * embed_dim) on its own.\n\n    This exists to answer \"how big is this model\" without instantiating\n    it - the same estimate a serving engineer makes before ever loading\n    weights, to check it fits in memory.\n    \"\"\"\n    attention_params = 4 * (embed_dim * embed_dim + embed_dim)\n    mlp_params = 2 * embed_dim * (embed_dim * mlp_ratio) + embed_dim * mlp_ratio + embed_dim\n    norm_params = 2 * (2 * embed_dim)\n    per_block = attention_params + mlp_params + norm_params\n\n    token_embedding_params = vocab_size * embed_dim  # tied with the output head\n    position_embedding_params = max_seq_len * embed_dim\n    final_norm_params = 2 * embed_dim\n\n    return (token_embedding_params + position_embedding_params\n            + num_layers * per_block + final_norm_params)"
+  },
+  {
+   "name": "generate_greedy",
+   "test_targets": [
+    "TestGenerateGreedy"
+   ],
+   "solution": "@torch.no_grad()\ndef generate_greedy(model, input_ids, max_new_tokens):\n    \"\"\"Autoregressively extend input_ids by max_new_tokens, greedy at each step.\n\n    No KV cache here (module 26 covers that trade-off on its own) - this\n    is the simplest correct version: run the whole sequence through the\n    model every step, take the argmax over the last position's logits,\n    append it, repeat. Simplicity is the point of this exercise; a serving\n    system would add the KV cache from module 26 on top of exactly this\n    loop, not replace it.\n    \"\"\"\n    for _ in range(max_new_tokens):\n        logits = model(input_ids)\n        next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)\n        input_ids = torch.cat([input_ids, next_token], dim=1)\n    return input_ids"
+  }
+ ]
+}

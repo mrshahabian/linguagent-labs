@@ -1,0 +1,12 @@
+{
+ "id": "icf/stations",
+ "title": "Unit 5 - Weather station network",
+ "track": "icf",
+ "order": 39,
+ "minutes": 55,
+ "tests": 26,
+ "kind": "project",
+ "app": "https://linguagent.com/courses/icf/stations",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interviews-icf/34-stations/lab.ipynb",
+ "needs": []
+}

@@ -1,0 +1,12 @@
+{
+ "id": "icf/container",
+ "title": "Unit 1 - Platform and structures",
+ "track": "icf",
+ "order": 35,
+ "minutes": 45,
+ "tests": 13,
+ "kind": "project",
+ "app": "https://linguagent.com/courses/icf/container",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interviews-icf/09-container/lab.ipynb",
+ "needs": []
+}

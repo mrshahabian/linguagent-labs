@@ -1,0 +1,127 @@
+{
+ "id": "python/broadcasting",
+ "title": "Python 3 - Broadcasting",
+ "track": "python",
+ "order": 10,
+ "minutes": 55,
+ "tests": 32,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/python/broadcasting",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/python/12-broadcasting/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestBroadcastShape"
+  ],
+  "2": [
+   "TestPairwiseDistances",
+   "TestOneHot"
+  ],
+  "3": [
+   "k:sums_to_one",
+   "k:rows_become_unit_length"
+  ],
+  "4": [
+   "TestSoftmax"
+  ],
+  "5": [
+   "TestMaskedMean",
+   "TestIoU",
+   "TestNormaliseRows"
+  ],
+  "6": [
+   "TestBatchedDot"
+  ],
+  "7": [
+   "TestTopK"
+  ]
+ },
+ "sections": {
+  "1": [
+   "broadcast_shape"
+  ],
+  "2": [
+   "pairwise_distances",
+   "one_hot"
+  ],
+  "3": [
+   "softmax",
+   "normalise_rows"
+  ],
+  "5": [
+   "masked_mean",
+   "iou"
+  ],
+  "6": [
+   "batched_dot"
+  ],
+  "7": [
+   "top_k"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "broadcast_shape",
+   "test_targets": [
+    "TestBroadcastShape"
+   ],
+   "solution": "def broadcast_shape(a, b):\n    \"\"\"Return the shape a and b broadcast to, or None if incompatible.\n\n    The rule: align the shapes from the RIGHT, pad the shorter with 1s, and\n    for each axis the sizes must be equal or one of them must be 1. The\n    result takes the larger of the two.\n\n    broadcast_shape((3, 1), (1, 4)) -> (3, 4)\n    broadcast_shape((3,), (4,))     -> None\n    \"\"\"\n    width = max(len(a), len(b))\n    left = (1,) * (width - len(a)) + tuple(a)\n    right = (1,) * (width - len(b)) + tuple(b)\n    out = []\n    for x, y in zip(left, right):\n        if x != y and x != 1 and y != 1:\n            return None\n        out.append(max(x, y))\n    return tuple(out)"
+  },
+  {
+   "name": "pairwise_distances",
+   "test_targets": [
+    "TestPairwiseDistances"
+   ],
+   "solution": "def pairwise_distances(a, b):\n    \"\"\"Euclidean distance between every row of a and every row of b.\n\n    a: (n, d), b: (m, d) -> (n, m). No Python loops.\n\n    The trick is inserting a length-1 axis so the two arrays broadcast\n    against each other: (n, 1, d) against (m, d) gives (n, m, d).\n    \"\"\"\n    diff = a[:, None, :] - b[None, :, :]\n    return np.sqrt(np.sum(diff ** 2, axis=-1))"
+  },
+  {
+   "name": "softmax",
+   "test_targets": [
+    "TestSoftmax"
+   ],
+   "solution": "def softmax(x, axis=-1):\n    \"\"\"Numerically stable softmax along `axis`.\n\n    Subtracting the max before exponentiating changes nothing\n    mathematically - exp(a - c) / sum(exp(a - c)) equals exp(a) / sum(exp(a))\n    - but it stops exp() overflowing to inf for large inputs.\n\n    keepdims=True is what lets the result broadcast back against x.\n    \"\"\"\n    shifted = x - np.max(x, axis=axis, keepdims=True)\n    exponentiated = np.exp(shifted)\n    return exponentiated / np.sum(exponentiated, axis=axis, keepdims=True)"
+  },
+  {
+   "name": "one_hot",
+   "test_targets": [
+    "TestOneHot"
+   ],
+   "solution": "def one_hot(labels, num_classes):\n    \"\"\"(n,) integer labels -> (n, num_classes) float32 one-hot matrix.\n\n    Comparing a column vector of labels against a row of class indices\n    broadcasts to the full matrix in one step.\n    \"\"\"\n    return (labels[:, None] == np.arange(num_classes)[None, :]).astype(np.float32)"
+  },
+  {
+   "name": "masked_mean",
+   "test_targets": [
+    "TestMaskedMean"
+   ],
+   "solution": "def masked_mean(x, mask, axis=None):\n    \"\"\"Mean of x over positions where mask is True.\n\n    Positions with no unmasked values produce NaN rather than raising.\n    \"\"\"\n    counts = np.sum(mask, axis=axis)\n    totals = np.sum(np.where(mask, x, 0.0), axis=axis)\n    with np.errstate(invalid=\"ignore\", divide=\"ignore\"):\n        return np.where(counts > 0, totals / np.maximum(counts, 1), np.nan)"
+  },
+  {
+   "name": "iou",
+   "test_targets": [
+    "TestIoU"
+   ],
+   "solution": "def iou(boxes_a, boxes_b):\n    \"\"\"Intersection-over-union between every pair of boxes.\n\n    Boxes are (x1, y1, x2, y2) with x1 < x2 and y1 < y2.\n    a: (n, 4), b: (m, 4) -> (n, m).\n\n    The staple of every detection pipeline, and a common interview warm-up\n    for vision roles. Clipping the overlap at 0 is what handles boxes that\n    do not intersect at all.\n    \"\"\"\n    ax1, ay1, ax2, ay2 = (boxes_a[:, i][:, None] for i in range(4))\n    bx1, by1, bx2, by2 = (boxes_b[:, i][None, :] for i in range(4))\n\n    inter_w = np.clip(np.minimum(ax2, bx2) - np.maximum(ax1, bx1), 0, None)\n    inter_h = np.clip(np.minimum(ay2, by2) - np.maximum(ay1, by1), 0, None)\n    intersection = inter_w * inter_h\n\n    area_a = (ax2 - ax1) * (ay2 - ay1)\n    area_b = (bx2 - bx1) * (by2 - by1)\n    union = area_a + area_b - intersection\n\n    with np.errstate(invalid=\"ignore\", divide=\"ignore\"):\n        return np.where(union > 0, intersection / np.maximum(union, 1e-12), 0.0)"
+  },
+  {
+   "name": "batched_dot",
+   "test_targets": [
+    "TestBatchedDot"
+   ],
+   "solution": "def batched_dot(a, b):\n    \"\"\"Row-wise dot product of two (n, d) arrays -> (n,).\n\n    Equivalent to np.einsum(\"nd,nd->n\", a, b). Do not build the (n, n)\n    matrix and take its diagonal - that is O(n^2) memory for an O(n) answer.\n    \"\"\"\n    return np.sum(a * b, axis=-1)"
+  },
+  {
+   "name": "top_k",
+   "test_targets": [
+    "TestTopK"
+   ],
+   "solution": "def top_k(scores, k):\n    \"\"\"Indices of the k largest values, highest first, ties by lower index.\n\n    argpartition finds the k largest in O(n) without sorting the rest, then\n    only those k are sorted.\n    \"\"\"\n    k = min(k, scores.shape[-1])\n    if k == 0:\n        return np.empty(0, dtype=int)\n    candidates = np.argpartition(-scores, k - 1)[:k]\n    # lexsort takes the PRIMARY key last: sort by descending score, and break\n    # ties towards the lower index.\n    return candidates[np.lexsort((candidates, -scores[candidates]))]"
+  },
+  {
+   "name": "normalise_rows",
+   "test_targets": [
+    "TestNormaliseRows"
+   ],
+   "solution": "def normalise_rows(x, eps=1e-12):\n    \"\"\"Scale each row to unit L2 norm; all-zero rows stay all-zero.\"\"\"\n    norms = np.sqrt(np.sum(x ** 2, axis=-1, keepdims=True))\n    return x / np.maximum(norms, eps)"
+  }
+ ]
+}
