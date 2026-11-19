@@ -1,0 +1,83 @@
+{
+ "id": "applied-ds/sklearn-pipelines",
+ "title": "Features and pipelines with scikit-learn",
+ "track": "applied-ds",
+ "order": 55,
+ "minutes": 40,
+ "tests": 26,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/applied-ds/sklearn-pipelines",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/55-sklearn-pipelines/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestStratifiedSplit"
+  ],
+  "2": [
+   "TestBuildPreprocessor"
+  ],
+  "3": [
+   "TestBuildPipeline"
+  ],
+  "4": [
+   "TestFitAndScore"
+  ],
+  "5": [
+   "TestLeakageDemo"
+  ]
+ },
+ "sections": {
+  "1": [
+   "stratified_split"
+  ],
+  "2": [
+   "build_preprocessor"
+  ],
+  "3": [
+   "build_pipeline"
+  ],
+  "4": [
+   "fit_and_score"
+  ],
+  "5": [
+   "leakage_demo"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "stratified_split",
+   "test_targets": [
+    "TestStratifiedSplit"
+   ],
+   "solution": "def stratified_split(df: pd.DataFrame, target_col: str, test_size: float = 0.2, random_state: int = 42):\n    \"\"\"Split the DataFrame into train and test sets, stratifying on target_col.\"\"\"\n    df_train, df_test = train_test_split(\n        df,\n        test_size=test_size,\n        stratify=df[target_col],\n        random_state=random_state\n    )\n    return df_train, df_test"
+  },
+  {
+   "name": "build_preprocessor",
+   "test_targets": [
+    "TestBuildPreprocessor"
+   ],
+   "solution": "def build_preprocessor(numeric_cols: list, categorical_cols: list) -> ColumnTransformer:\n    \"\"\"Build a ColumnTransformer that preprocesses numeric and categorical columns.\"\"\"\n    numeric_transformer = Pipeline(steps=[\n        ('imputer', SimpleImputer(strategy='median')),\n        ('scaler', StandardScaler())\n    ])\n\n    categorical_transformer = Pipeline(steps=[\n        ('imputer', SimpleImputer(strategy='most_frequent')),\n        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))\n    ])\n\n    preprocessor = ColumnTransformer(\n        transformers=[\n            ('num', numeric_transformer, numeric_cols),\n            ('cat', categorical_transformer, categorical_cols)\n        ]\n    )\n    return preprocessor"
+  },
+  {
+   "name": "build_pipeline",
+   "test_targets": [
+    "TestBuildPipeline"
+   ],
+   "solution": "def build_pipeline(preprocessor: ColumnTransformer, C: float = 1.0, random_state: int = 42) -> Pipeline:\n    \"\"\"Build a Pipeline containing the preprocessor and a LogisticRegression classifier.\"\"\"\n    pipeline = Pipeline(steps=[\n        ('preprocessor', preprocessor),\n        ('classifier', LogisticRegression(C=C, random_state=random_state, max_iter=1000))\n    ])\n    return pipeline"
+  },
+  {
+   "name": "fit_and_score",
+   "test_targets": [
+    "TestFitAndScore"
+   ],
+   "solution": "def fit_and_score(pipeline: Pipeline, df_train: pd.DataFrame, df_test: pd.DataFrame, target_col: str) -> tuple:\n    \"\"\"Fit the pipeline on df_train and score it on both df_train and df_test.\"\"\"\n    X_train = df_train.drop(columns=[target_col])\n    y_train = df_train[target_col]\n\n    X_test = df_test.drop(columns=[target_col])\n    y_test = df_test[target_col]\n\n    pipeline.fit(X_train, y_train)\n\n    train_acc = pipeline.score(X_train, y_train)\n    test_acc = pipeline.score(X_test, y_test)\n\n    return train_acc, test_acc"
+  },
+  {
+   "name": "leakage_demo",
+   "test_targets": [
+    "TestLeakageDemo"
+   ],
+   "solution": "def leakage_demo(df: pd.DataFrame, target_col: str, numeric_cols: list) -> tuple:\n    \"\"\"Demonstrate data leakage by comparing two scaling workflows.\"\"\"\n    # Scenario A: Leaky\n    df_leaky = df.copy()\n    scaler_leaky = StandardScaler()\n    df_leaky[numeric_cols] = scaler_leaky.fit_transform(df_leaky[numeric_cols])\n\n    df_train_leaky, df_test_leaky = stratified_split(df_leaky, target_col, test_size=0.2, random_state=42)\n\n    X_train_leaky = df_train_leaky[numeric_cols]\n    y_train_leaky = df_train_leaky[target_col]\n    X_test_leaky = df_test_leaky[numeric_cols]\n    y_test_leaky = df_test_leaky[target_col]\n\n    model_leaky = LogisticRegression(random_state=42)\n    model_leaky.fit(X_train_leaky, y_train_leaky)\n    leaky_score = model_leaky.score(X_test_leaky, y_test_leaky)\n\n    # Scenario B: Clean\n    df_train_clean, df_test_clean = stratified_split(df, target_col, test_size=0.2, random_state=42)\n\n    X_train_clean = df_train_clean[numeric_cols].copy()\n    y_train_clean = df_train_clean[target_col]\n    X_test_clean = df_test_clean[numeric_cols].copy()\n    y_test_clean = df_test_clean[target_col]\n\n    scaler_clean = StandardScaler()\n    X_train_scaled = scaler_clean.fit_transform(X_train_clean)\n    X_test_scaled = scaler_clean.transform(X_test_clean)\n\n    model_clean = LogisticRegression(random_state=42)\n    model_clean.fit(X_train_scaled, y_train_clean)\n    clean_score = model_clean.score(X_test_scaled, y_test_clean)\n\n    return leaky_score, clean_score"
+  }
+ ]
+}

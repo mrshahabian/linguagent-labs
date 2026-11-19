@@ -1,0 +1,96 @@
+{
+ "id": "interview-drills/log-pipeline",
+ "title": "A streaming log pipeline",
+ "track": "interview-drills",
+ "order": 63,
+ "minutes": 45,
+ "tests": 21,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/interview-drills/log-pipeline",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/63-log-pipeline/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestParseLine"
+  ],
+  "2": [
+   "TestRecords"
+  ],
+  "3": [
+   "TestFilterLevel"
+  ],
+  "4": [
+   "TestErrorsPerMinute"
+  ],
+  "5": [
+   "TestTopEndpoints"
+  ],
+  "6": [
+   "TestErrorRateAlerts"
+  ]
+ },
+ "sections": {
+  "1": [
+   "parse_line"
+  ],
+  "2": [
+   "records"
+  ],
+  "3": [
+   "filter_level"
+  ],
+  "4": [
+   "errors_per_minute"
+  ],
+  "5": [
+   "top_endpoints"
+  ],
+  "6": [
+   "error_rate_alerts"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "parse_line",
+   "test_targets": [
+    "TestParseLine"
+   ],
+   "solution": "def parse_line(line: str) -> Optional[LogRecord]:\n    match = LOG_PATTERN.match(line.strip())\n    if not match:\n        return None\n    \n    ts_str, level, endpoint, status_str = match.groups()\n    try:\n        timestamp = datetime.strptime(ts_str, \"%Y-%m-%d %H:%M:%S\")\n        status = int(status_str)\n        return LogRecord(timestamp=timestamp, level=level, endpoint=endpoint, status=status)\n    except ValueError:\n        return None"
+  },
+  {
+   "name": "records",
+   "test_targets": [
+    "TestRecords"
+   ],
+   "solution": "def records(lines: Iterable[str]) -> Iterator[LogRecord]:\n    for line in lines:\n        record = parse_line(line)\n        if record is not None:\n            yield record"
+  },
+  {
+   "name": "filter_level",
+   "test_targets": [
+    "TestFilterLevel"
+   ],
+   "solution": "def filter_level(records: Iterable[LogRecord], level: str) -> Iterator[LogRecord]:\n    target_level = level.upper()\n    for record in records:\n        if record.level.upper() == target_level:\n            yield record"
+  },
+  {
+   "name": "errors_per_minute",
+   "test_targets": [
+    "TestErrorsPerMinute"
+   ],
+   "solution": "def errors_per_minute(records: Iterable[LogRecord]) -> Iterator[tuple[datetime, int]]:\n    current_minute = None\n    error_count = 0\n\n    for record in records:\n        rec_minute = record.timestamp.replace(second=0, microsecond=0)\n        is_error = (record.level == \"ERROR\" or record.status >= 500)\n\n        if current_minute is None:\n            current_minute = rec_minute\n            error_count = 1 if is_error else 0\n        elif rec_minute == current_minute:\n            if is_error:\n                error_count += 1\n        else:\n            if error_count > 0:\n                yield (current_minute, error_count)\n            current_minute = rec_minute\n            error_count = 1 if is_error else 0\n\n    if current_minute is not None and error_count > 0:\n        yield (current_minute, error_count)"
+  },
+  {
+   "name": "top_endpoints",
+   "test_targets": [
+    "TestTopEndpoints"
+   ],
+   "solution": "def top_endpoints(records: Iterable[LogRecord], k: int) -> list[tuple[str, int]]:\n    counts = Counter(record.endpoint for record in records)\n    # Sort by count descending, then alphabetically by endpoint name ascending\n    sorted_endpoints = sorted(counts.items(), key=lambda item: (-item[1], item[0]))\n    return sorted_endpoints[:k]"
+  },
+  {
+   "name": "error_rate_alerts",
+   "test_targets": [
+    "TestErrorRateAlerts"
+   ],
+   "solution": "def error_rate_alerts(\n    records: Iterable[LogRecord],\n    window_seconds: int,\n    threshold: float\n) -> Iterator[tuple[datetime, float]]:\n    window = deque()\n    error_count = 0\n\n    for record in records:\n        current_time = record.timestamp\n        is_error = (record.level == \"ERROR\" or record.status >= 500)\n\n        window.append(record)\n        if is_error:\n            error_count += 1\n\n        cutoff = current_time - timedelta(seconds=window_seconds)\n        while window and window[0].timestamp <= cutoff:\n            expired = window.popleft()\n            expired_is_error = (expired.level == \"ERROR\" or expired.status >= 500)\n            if expired_is_error:\n                error_count -= 1\n\n        total = len(window)\n        if total > 0:\n            rate = error_count / total\n            if rate > threshold:\n                yield (current_time, rate)"
+  }
+ ]
+}

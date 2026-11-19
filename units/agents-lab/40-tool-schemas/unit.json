@@ -1,0 +1,68 @@
+{
+ "id": "agents-lab/tool-schemas",
+ "title": "Tools and their schemas",
+ "track": "agents-lab",
+ "order": 40,
+ "minutes": 45,
+ "tests": 20,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/agents-lab/tool-schemas",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/40-tool-schemas/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestToolClass"
+  ],
+  "2": [
+   "TestValidateArgs"
+  ],
+  "3": [
+   "TestCoerceArgs"
+  ],
+  "4": [
+   "TestToolRegistry"
+  ]
+ },
+ "sections": {
+  "4": [
+   "Tool",
+   "ToolRegistry"
+  ],
+  "2": [
+   "validate_args"
+  ],
+  "3": [
+   "coerce_args"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "Tool",
+   "test_targets": [
+    "TestToolRegistry"
+   ],
+   "solution": "class Tool:\n    \"\"\"Represents an agent tool.\n\n    Attributes:\n        name: The unique name of the tool (e.g., \"calculate_tax\").\n        description: A description of what the tool does.\n        parameters: A JSON Schema-like dictionary describing the arguments.\n        func: The actual Python function to execute.\n    \"\"\"\n\n    def __init__(self, name: str, description: str, parameters: dict, func: Callable):\n        self.name = name\n        self.description = description\n        self.parameters = parameters\n        self.func = func"
+  },
+  {
+   "name": "validate_args",
+   "test_targets": [
+    "TestValidateArgs"
+   ],
+   "solution": "def validate_args(schema: dict, args: dict) -> None:\n    \"\"\"Validate arguments against a JSON Schema-like dictionary.\"\"\"\n    if not isinstance(args, dict):\n        raise ValueError(\"Arguments must be a dictionary\")\n\n    properties = schema.get(\"properties\", {})\n    required = schema.get(\"required\", [])\n\n    # Check required fields\n    for req in required:\n        if req not in args:\n            raise ValueError(f\"Missing required argument: '{req}'\")\n\n    # Check for unknown keys\n    for key in args:\n        if key not in properties:\n            raise ValueError(f\"Unknown argument: '{key}'\")\n\n    # Validate types and enums\n    for key, val in args.items():\n        param_schema = properties[key]\n        expected_type = param_schema.get(\"type\")\n\n        # Strict type checking (avoiding Python's bool-is-int trap)\n        is_valid_type = True\n        if expected_type == \"boolean\":\n            is_valid_type = isinstance(val, bool)\n        elif expected_type == \"integer\":\n            is_valid_type = isinstance(val, int) and not isinstance(val, bool)\n        elif expected_type == \"number\":\n            is_valid_type = isinstance(val, (int, float)) and not isinstance(val, bool)\n        elif expected_type == \"string\":\n            is_valid_type = isinstance(val, str)\n        elif expected_type == \"array\":\n            is_valid_type = isinstance(val, list)\n\n        if not is_valid_type:\n            raise ValueError(\n                f\"Argument '{key}' must be of type '{expected_type}', got '{type(val).__name__}'\"\n            )\n\n        # Check enum constraints\n        if \"enum\" in param_schema:\n            allowed = param_schema[\"enum\"]\n            if val not in allowed:\n                raise ValueError(\n                    f\"Argument '{key}' has invalid value '{val}'. Must be one of: {allowed}\"\n                )"
+  },
+  {
+   "name": "coerce_args",
+   "test_targets": [
+    "TestCoerceArgs"
+   ],
+   "solution": "def coerce_args(schema: dict, args: dict) -> dict:\n    \"\"\"Coerce stringified arguments to their correct types based on the schema.\"\"\"\n    coerced = dict(args)\n    properties = schema.get(\"properties\", {})\n\n    for key, val in args.items():\n        if key in properties:\n            param_schema = properties[key]\n            expected_type = param_schema.get(\"type\")\n\n            if isinstance(val, str):\n                if expected_type == \"integer\":\n                    try:\n                        coerced[key] = int(val)\n                    except ValueError:\n                        pass\n                elif expected_type == \"number\":\n                    try:\n                        coerced[key] = float(val)\n                    except ValueError:\n                        pass\n                elif expected_type == \"boolean\":\n                    if val.lower() == \"true\":\n                        coerced[key] = True\n                    elif val.lower() == \"false\":\n                        coerced[key] = False\n\n    return coerced"
+  },
+  {
+   "name": "ToolRegistry",
+   "test_targets": [
+    "TestToolRegistry"
+   ],
+   "solution": "class ToolRegistry:\n    \"\"\"Manages a collection of tools, handles execution, and generates prompts.\"\"\"\n\n    def __init__(self):\n        self.tools: Dict[str, Tool] = {}\n\n    def register(self, tool: Tool) -> None:\n        \"\"\"Register a tool. Raises ValueError if a tool with the same name exists.\"\"\"\n        if tool.name in self.tools:\n            raise ValueError(f\"Tool with name '{tool.name}' is already registered\")\n        self.tools[tool.name] = tool\n\n    def get(self, name: str) -> Tool:\n        \"\"\"Retrieve a tool by name. Raises KeyError if not found.\"\"\"\n        if name not in self.tools:\n            raise KeyError(f\"Tool '{name}' not found\")\n        return self.tools[name]\n\n    def call(self, name: str, args: dict) -> Any:\n        \"\"\"Execute a tool by name with the given raw arguments.\"\"\"\n        tool = self.get(name)\n        coerced = coerce_args(tool.parameters, args)\n        validate_args(tool.parameters, coerced)\n        return tool.func(**coerced)\n\n    def describe(self) -> str:\n        \"\"\"Render a deterministic, human-readable description of all tools.\"\"\"\n        tool_blocks = []\n        for name in sorted(self.tools.keys()):\n            tool = self.tools[name]\n            lines = [\n                f\"Tool: {tool.name}\",\n                f\"Description: {tool.description}\",\n                \"Parameters:\"\n            ]\n            properties = tool.parameters.get(\"properties\", {})\n            required = tool.parameters.get(\"required\", [])\n\n            if not properties:\n                lines.append(\"  None\")\n            else:\n                for param_name in sorted(properties.keys()):\n                    param_schema = properties[param_name]\n                    ptype = param_schema.get(\"type\", \"any\")\n                    req_status = \"required\" if param_name in required else \"optional\"\n\n                    enum_suffix = \"\"\n                    if \"enum\" in param_schema:\n                        enum_vals = \", \".join(str(v) for v in param_schema[\"enum\"])\n                        enum_suffix = f\" [Enum: {enum_vals}]\"\n\n                    lines.append(f\"  - {param_name} ({ptype}) ({req_status}){enum_suffix}\")\n\n            tool_blocks.append(\"\\n\".join(lines))\n\n        return \"\\n\\n\".join(tool_blocks)"
+  }
+ ]
+}

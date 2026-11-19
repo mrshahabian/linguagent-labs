@@ -1,0 +1,96 @@
+{
+ "id": "applied-ds/groupby-analysis",
+ "title": "Exploring data: groupby, pivots and joins",
+ "track": "applied-ds",
+ "order": 53,
+ "minutes": 45,
+ "tests": 24,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/applied-ds/groupby-analysis",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/53-groupby-analysis/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestSummaryBy"
+  ],
+  "2": [
+   "TestTopNPerGroup"
+  ],
+  "3": [
+   "TestPivotMatrix"
+  ],
+  "4": [
+   "TestJoinWithLookup"
+  ],
+  "5": [
+   "TestRollingAverage"
+  ],
+  "6": [
+   "TestPercentChange"
+  ]
+ },
+ "sections": {
+  "1": [
+   "summary_by"
+  ],
+  "2": [
+   "top_n_per_group"
+  ],
+  "3": [
+   "pivot_matrix"
+  ],
+  "4": [
+   "join_with_lookup"
+  ],
+  "5": [
+   "rolling_average"
+  ],
+  "6": [
+   "percent_change"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "summary_by",
+   "test_targets": [
+    "TestSummaryBy"
+   ],
+   "solution": "def summary_by(df: pd.DataFrame, key: str, metrics: Dict[str, Tuple[str, str]]) -> pd.DataFrame:\n    agg_dict = {new_col: (src_col, agg_func) for new_col, (src_col, agg_func) in metrics.items()}\n    return df.groupby(key).agg(**agg_dict)"
+  },
+  {
+   "name": "top_n_per_group",
+   "test_targets": [
+    "TestTopNPerGroup"
+   ],
+   "solution": "def top_n_per_group(df: pd.DataFrame, group_col: str, sort_col: str, n: int) -> pd.DataFrame:\n    sorted_df = df.sort_values(by=sort_col, ascending=False)\n    return sorted_df.groupby(group_col).head(n)"
+  },
+  {
+   "name": "pivot_matrix",
+   "test_targets": [
+    "TestPivotMatrix"
+   ],
+   "solution": "def pivot_matrix(df: pd.DataFrame, index_col: str, columns_col: str, values_col: str, fill_value: float) -> pd.DataFrame:\n    return df.pivot(index=index_col, columns=columns_col, values=values_col).fillna(fill_value)"
+  },
+  {
+   "name": "join_with_lookup",
+   "test_targets": [
+    "TestJoinWithLookup"
+   ],
+   "solution": "def join_with_lookup(left_df: pd.DataFrame, right_df: pd.DataFrame, on_col: str) -> Tuple[pd.DataFrame, Set]:\n    joined = pd.merge(left_df, right_df, on=on_col, how='left')\n    left_keys = set(left_df[on_col].dropna().unique())\n    right_keys = set(right_df[on_col].dropna().unique())\n    unmatched = left_keys - right_keys\n    return joined, unmatched"
+  },
+  {
+   "name": "rolling_average",
+   "test_targets": [
+    "TestRollingAverage"
+   ],
+   "solution": "def rolling_average(df: pd.DataFrame, group_col: str, time_col: str, value_col: str, window_size: int) -> pd.Series:\n    sorted_df = df.sort_values(by=[group_col, time_col])\n    rolling_series = sorted_df.groupby(group_col)[value_col].rolling(window=window_size, min_periods=1).mean()\n    return rolling_series.reset_index(level=0, drop=True)"
+  },
+  {
+   "name": "percent_change",
+   "test_targets": [
+    "TestPercentChange"
+   ],
+   "solution": "def percent_change(df: pd.DataFrame, group_col: str, time_col: str, value_col: str) -> pd.Series:\n    sorted_df = df.sort_values(by=[group_col, time_col])\n    return sorted_df.groupby(group_col)[value_col].pct_change()"
+  }
+ ]
+}

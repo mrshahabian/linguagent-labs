@@ -1,0 +1,83 @@
+{
+ "id": "llm-lab/rag",
+ "title": "Retrieval-augmented generation",
+ "track": "llm-lab",
+ "order": 49,
+ "minutes": 45,
+ "tests": 22,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/llm-lab/rag",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/49-rag/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestSelectContext"
+  ],
+  "2": [
+   "TestBuildPrompt"
+  ],
+  "3": [
+   "TestParseCitations"
+  ],
+  "4": [
+   "TestGroundingScore"
+  ],
+  "5": [
+   "TestAnswerOrAbstain"
+  ]
+ },
+ "sections": {
+  "1": [
+   "select_context"
+  ],
+  "2": [
+   "build_prompt"
+  ],
+  "3": [
+   "parse_citations"
+  ],
+  "4": [
+   "grounding_score"
+  ],
+  "5": [
+   "answer_or_abstain"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "select_context",
+   "test_targets": [
+    "TestSelectContext"
+   ],
+   "solution": "def select_context(\n    chunks: List[Dict[str, Any]], \n    token_budget: int, \n    token_counter: Callable[[str], int]\n) -> List[Dict[str, Any]]:\n    selected = []\n    current_tokens = 0\n    for chunk in chunks:\n        tokens = token_counter(chunk[\"text\"])\n        if current_tokens + tokens <= token_budget:\n            selected.append(chunk)\n            current_tokens += tokens\n    return selected"
+  },
+  {
+   "name": "build_prompt",
+   "test_targets": [
+    "TestBuildPrompt"
+   ],
+   "solution": "def build_prompt(\n    question: str, \n    context_chunks: List[Dict[str, Any]], \n    system_instruction: str = None\n) -> str:\n    if system_instruction is None:\n        system_instruction = (\n            \"You are a helpful assistant. Answer the question using only the provided sources. \"\n            \"Cite your sources using [1], [2], etc.\"\n        )\n    \n    parts = [system_instruction.strip()]\n    \n    sources_part = [\"Sources:\"]\n    for i, chunk in enumerate(context_chunks, 1):\n        sources_part.append(f\"[{i}] {chunk['text'].strip()}\")\n    \n    parts.append(\"\\n\".join(sources_part))\n    parts.append(f\"Question: {question.strip()}\")\n    parts.append(\"Answer:\")\n    \n    return \"\\n\\n\".join(parts)"
+  },
+  {
+   "name": "parse_citations",
+   "test_targets": [
+    "TestParseCitations"
+   ],
+   "solution": "def parse_citations(\n    answer: str, \n    context_chunks: List[Dict[str, Any]]\n) -> Dict[int, str]:\n    citations = {}\n    matches = re.findall(r'\\[([0-9]+)\\]', answer)\n    for match in matches:\n        idx = int(match)\n        if 1 <= idx <= len(context_chunks):\n            citations[idx] = context_chunks[idx - 1][\"text\"]\n    return citations"
+  },
+  {
+   "name": "grounding_score",
+   "test_targets": [
+    "TestGroundingScore"
+   ],
+   "solution": "def grounding_score(\n    answer: str, \n    citations: Dict[int, str], \n    n: int = 3\n) -> float:\n    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\\s+', answer.strip()) if s.strip()]\n    if not sentences:\n        return 0.0\n    \n    scores = []\n    for sentence in sentences:\n        citation_matches = re.findall(r'\\[([0-9]+)\\]', sentence)\n        if not citation_matches:\n            scores.append(0.0)\n            continue\n        \n        cleaned = re.sub(r'\\[[0-9]+\\]', '', sentence)\n        words = re.findall(r'\\b\\w+\\b', cleaned.lower())\n        \n        if len(words) < n:\n            scores.append(1.0)\n            continue\n        \n        sentence_ngrams = set()\n        for i in range(len(words) - n + 1):\n            sentence_ngrams.add(tuple(words[i:i+n]))\n            \n        source_texts = []\n        for m in citation_matches:\n            idx = int(m)\n            if idx in citations:\n                source_texts.append(citations[idx])\n                \n        combined_sources = \" \".join(source_texts)\n        source_words = re.findall(r'\\b\\w+\\b', combined_sources.lower())\n        \n        source_ngrams = set()\n        for i in range(len(source_words) - n + 1):\n            source_ngrams.add(tuple(source_words[i:i+n]))\n            \n        if not sentence_ngrams:\n            scores.append(1.0)\n        else: \n            matched = len(sentence_ngrams.intersection(source_ngrams))\n            scores.append(matched / len(sentence_ngrams))\n            \n    return sum(scores) / len(scores)"
+  },
+  {
+   "name": "answer_or_abstain",
+   "test_targets": [
+    "TestAnswerOrAbstain"
+   ],
+   "solution": "def answer_or_abstain(\n    answer: str, \n    score: float, \n    threshold: float = 0.7, \n    abstain_message: str = \"I cannot answer this question based on the provided sources.\"\n) -> str:\n    if score < threshold:\n        return abstain_message\n    return answer"
+  }
+ ]
+}

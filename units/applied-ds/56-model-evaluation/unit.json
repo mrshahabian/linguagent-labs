@@ -1,0 +1,96 @@
+{
+ "id": "applied-ds/model-evaluation",
+ "title": "Evaluating models honestly",
+ "track": "applied-ds",
+ "order": 56,
+ "minutes": 45,
+ "tests": 19,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/applied-ds/model-evaluation",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/56-model-evaluation/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestConfusionCounts"
+  ],
+  "2": [
+   "TestPrecisionRecallF1"
+  ],
+  "3": [
+   "TestRocAuc"
+  ],
+  "4": [
+   "TestBestThreshold"
+  ],
+  "5": [
+   "TestCrossValidateScores"
+  ],
+  "6": [
+   "TestCompareToBaseline"
+  ]
+ },
+ "sections": {
+  "1": [
+   "confusion_counts"
+  ],
+  "2": [
+   "precision_recall_f1"
+  ],
+  "3": [
+   "roc_auc"
+  ],
+  "4": [
+   "best_threshold"
+  ],
+  "5": [
+   "cross_validate_scores"
+  ],
+  "6": [
+   "compare_to_baseline"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "confusion_counts",
+   "test_targets": [
+    "TestConfusionCounts"
+   ],
+   "solution": "def confusion_counts(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, int]:\n    y_true = np.asarray(y_true)\n    y_pred = np.asarray(y_pred)\n    if len(y_true) == 0:\n        return {\"tp\": 0, \"fp\": 0, \"fn\": 0, \"tn\": 0}\n    tp = int(np.sum((y_true == 1) & (y_pred == 1)))\n    fp = int(np.sum((y_true == 0) & (y_pred == 1)))\n    fn = int(np.sum((y_true == 1) & (y_pred == 0)))\n    tn = int(np.sum((y_true == 0) & (y_pred == 0)))\n    return {\"tp\": tp, \"fp\": fp, \"fn\": fn, \"tn\": tn}"
+  },
+  {
+   "name": "precision_recall_f1",
+   "test_targets": [
+    "TestPrecisionRecallF1"
+   ],
+   "solution": "def precision_recall_f1(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[float, float, float]:\n    counts = confusion_counts(y_true, y_pred)\n    tp, fp, fn = counts[\"tp\"], counts[\"fp\"], counts[\"fn\"]\n    \n    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0\n    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0\n    \n    if precision + recall > 0:\n        f1 = 2 * precision * recall / (precision + recall)\n    else:\n        f1 = 0.0\n        \n    return (float(precision), float(recall), float(f1))"
+  },
+  {
+   "name": "roc_auc",
+   "test_targets": [
+    "TestRocAuc"
+   ],
+   "solution": "def roc_auc(y_true: np.ndarray, y_proba: np.ndarray) -> float:\n    y_true = np.asarray(y_true)\n    y_proba = np.asarray(y_proba)\n    n_p = int(np.sum(y_true == 1))\n    n_n = int(np.sum(y_true == 0))\n    if n_p == 0 or n_n == 0:\n        return 0.0\n    \n    ranks = pd.Series(y_proba).rank(method='average').values\n    R_p = np.sum(ranks[y_true == 1])\n    auc = (R_p - (n_p * (n_p + 1)) / 2) / (n_p * n_n)\n    return float(auc)"
+  },
+  {
+   "name": "best_threshold",
+   "test_targets": [
+    "TestBestThreshold"
+   ],
+   "solution": "def best_threshold(y_true: np.ndarray, y_proba: np.ndarray, metric: str = \"f1\") -> float:\n    y_true = np.asarray(y_true)\n    y_proba = np.asarray(y_proba)\n    if len(y_proba) == 0:\n        return 0.5\n    \n    unique_thresholds = np.unique(y_proba)\n    best_val = -1.0\n    best_thresh = 0.5\n    metric_idx = {\"precision\": 0, \"recall\": 1, \"f1\": 2}[metric]\n    \n    for thresh in unique_thresholds:\n        y_pred = (y_proba >= thresh).astype(int)\n        scores = precision_recall_f1(y_true, y_pred)\n        score = scores[metric_idx]\n        \n        if score > best_val:\n            best_val = score\n            best_thresh = thresh\n        elif score == best_val and thresh < best_thresh:\n            best_thresh = thresh\n            \n    return float(best_thresh)"
+  },
+  {
+   "name": "cross_validate_scores",
+   "test_targets": [
+    "TestCrossValidateScores"
+   ],
+   "solution": "def cross_validate_scores(X: pd.DataFrame, y: np.ndarray, model, n_splits: int = 5) -> list[float]:\n    X_arr = np.asarray(X)\n    y_arr = np.asarray(y)\n    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)\n    scores = []\n    \n    for train_idx, test_idx in skf.split(X_arr, y_arr):\n        X_train, X_test = X_arr[train_idx], X_arr[test_idx]\n        y_train, y_test = y_arr[train_idx], y_arr[test_idx]\n        \n        fold_model = clone(model)\n        fold_model.fit(X_train, y_train)\n        y_pred = fold_model.predict(X_test)\n        _, _, f1 = precision_recall_f1(y_test, y_pred)\n        scores.append(f1)\n        \n    return scores"
+  },
+  {
+   "name": "compare_to_baseline",
+   "test_targets": [
+    "TestCompareToBaseline"
+   ],
+   "solution": "def compare_to_baseline(X: pd.DataFrame, y: np.ndarray, model, n_splits: int = 5) -> dict[str, float]:\n    X_arr = np.asarray(X)\n    y_arr = np.asarray(y)\n    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)\n    \n    model_scores = []\n    baseline_scores = []\n    \n    for train_idx, test_idx in skf.split(X_arr, y_arr):\n        X_train, X_test = X_arr[train_idx], X_arr[test_idx]\n        y_train, y_test = y_arr[train_idx], y_arr[test_idx]\n        \n        # Model\n        fold_model = clone(model)\n        fold_model.fit(X_train, y_train)\n        y_pred = fold_model.predict(X_test)\n        _, _, f1_m = precision_recall_f1(y_test, y_pred)\n        model_scores.append(f1_m)\n        \n        # Baseline\n        classes, counts = np.unique(y_train, return_counts=True)\n        if len(classes) == 1:\n            majority_class = classes[0]\n        elif counts[0] == counts[1]:\n            majority_class = 0\n        else:\n            majority_class = classes[np.argmax(counts)]\n            \n        y_pred_base = np.full_like(y_test, fill_value=majority_class)\n        _, _, f1_b = precision_recall_f1(y_test, y_pred_base)\n        baseline_scores.append(f1_b)\n        \n    mean_model = float(np.mean(model_scores))\n    mean_base = float(np.mean(baseline_scores))\n    \n    return {\n        \"model_f1\": mean_model,\n        \"baseline_f1\": mean_base,\n        \"lift\": mean_model - mean_base\n    }"
+  }
+ ]
+}

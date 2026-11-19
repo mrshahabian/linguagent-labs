@@ -1,0 +1,70 @@
+{
+ "id": "interview-drills/random-unique",
+ "title": "Random unique numbers",
+ "track": "interview-drills",
+ "order": 60,
+ "minutes": 45,
+ "tests": 21,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/interview-drills/random-unique",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/60-random-unique/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestSampleWithoutReplacement"
+  ],
+  "2": [
+   "TestReservoirSample"
+  ],
+  "3": [
+   "TestUniqueRandomGenerator"
+  ],
+  "4": [
+   "TestWeightedChoice"
+  ]
+ },
+ "sections": {
+  "1": [
+   "sample_without_replacement"
+  ],
+  "2": [
+   "reservoir_sample"
+  ],
+  "3": [
+   "UniqueRandomGenerator"
+  ],
+  "4": [
+   "weighted_choice"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "sample_without_replacement",
+   "test_targets": [
+    "TestSampleWithoutReplacement"
+   ],
+   "solution": "def sample_without_replacement(lst: List[Any], k: int, rng: random.Random) -> List[Any]:\n    if k < 0 or k > len(lst):\n        raise ValueError(\"k must be non-negative and less than or equal to the list length\")\n    \n    arr = list(lst)\n    n = len(arr)\n    for i in range(k):\n        j = rng.randint(i, n - 1)\n        arr[i], arr[j] = arr[j], arr[i]\n    return arr[:k]"
+  },
+  {
+   "name": "reservoir_sample",
+   "test_targets": [
+    "TestReservoirSample"
+   ],
+   "solution": "def reservoir_sample(iterator: Iterator[Any], k: int, rng: random.Random) -> List[Any]:\n    if k < 0:\n        raise ValueError(\"k must be non-negative\")\n    \n    reservoir = []\n    for i, item in enumerate(iterator):\n        if i < k:\n            reservoir.append(item)\n        else: \n            j = rng.randint(0, i)\n            if j < k:\n                reservoir[j] = item\n    return reservoir"
+  },
+  {
+   "name": "UniqueRandomGenerator",
+   "test_targets": [
+    "TestUniqueRandomGenerator"
+   ],
+   "solution": "class UniqueRandomGenerator:\n    def __init__(self, n: int, rng: random.Random):\n        if n < 0:\n            raise ValueError(\"n must be non-negative\")\n        self.n = n\n        self.rng = rng\n        self.lookup = {}\n        self.drawn = 0\n\n    def has_next(self) -> bool:\n        return self.drawn < self.n\n\n    def draw(self) -> int:\n        if not self.has_next():\n            raise IndexError(\"All elements drawn\")\n        \n        i = self.drawn\n        j = self.rng.randint(i, self.n - 1)\n        \n        val_i = self.lookup.get(i, i)\n        val_j = self.lookup.get(j, j)\n        \n        self.lookup[j] = val_i\n        self.lookup[i] = val_j\n        \n        self.drawn += 1\n        return val_j"
+  },
+  {
+   "name": "weighted_choice",
+   "test_targets": [
+    "TestWeightedChoice"
+   ],
+   "solution": "def weighted_choice(weights: List[float], rng: random.Random) -> int:\n    if not weights:\n        raise ValueError(\"weights list cannot be empty\")\n    \n    prefix_sums = []\n    current_sum = 0.0\n    for w in weights:\n        if w < 0:\n            raise ValueError(\"weights cannot be negative\")\n        current_sum += w\n        prefix_sums.append(current_sum)\n        \n    if current_sum <= 0:\n        raise ValueError(\"sum of weights must be greater than zero\")\n        \n    r = rng.uniform(0, current_sum)\n    idx = bisect.bisect_right(prefix_sums, r)\n    \n    # Guard against floating-point precision edge cases\n    if idx >= len(weights):\n        idx = len(weights) - 1\n    return idx"
+  }
+ ]
+}

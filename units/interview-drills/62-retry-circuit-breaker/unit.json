@@ -1,0 +1,83 @@
+{
+ "id": "interview-drills/retry-circuit-breaker",
+ "title": "Retries and a circuit breaker",
+ "track": "interview-drills",
+ "order": 62,
+ "minutes": 45,
+ "tests": 22,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/interview-drills/retry-circuit-breaker",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/62-retry-circuit-breaker/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestIsRetryable"
+  ],
+  "2": [
+   "TestExponentialDelays"
+  ],
+  "3": [
+   "TestRetry"
+  ],
+  "4": [
+   "TestCircuitBreaker"
+  ],
+  "5": [
+   "TestGuardedCall"
+  ]
+ },
+ "sections": {
+  "1": [
+   "is_retryable"
+  ],
+  "2": [
+   "exponential_delays"
+  ],
+  "3": [
+   "retry"
+  ],
+  "4": [
+   "CircuitBreaker"
+  ],
+  "5": [
+   "guarded_call"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "is_retryable",
+   "test_targets": [
+    "TestIsRetryable"
+   ],
+   "solution": "def is_retryable(\n    exc: Exception,\n    retry_on: Iterable[Type[Exception]],\n    never_retry: Optional[Iterable[Type[Exception]]] = None,\n) -> bool:\n    if never_retry is not None and isinstance(exc, tuple(never_retry)):\n        return False\n    return isinstance(exc, tuple(retry_on))"
+  },
+  {
+   "name": "exponential_delays",
+   "test_targets": [
+    "TestExponentialDelays"
+   ],
+   "solution": "def exponential_delays(\n    base: float,\n    factor: float,\n    cap: float,\n    attempts: int,\n    rng: Optional[random.Random] = None,\n) -> List[float]:\n    if attempts <= 1:\n        return []\n    \n    delays = []\n    for i in range(attempts - 1):\n        un_jittered = min(base * (factor ** i), cap)\n        if rng is not None:\n            delay = rng.uniform(0, un_jittered)\n        else:\n            delay = un_jittered\n        delays.append(delay)\n    return delays"
+  },
+  {
+   "name": "retry",
+   "test_targets": [
+    "TestRetry"
+   ],
+   "solution": "def retry(\n    fn: Callable[[], any],\n    attempts: int,\n    retry_on: Iterable[Type[Exception]],\n    sleep: Callable[[float], None],\n    delays: List[float],\n    never_retry: Optional[Iterable[Type[Exception]]] = None,\n) -> any:\n    if attempts < 1:\n        raise ValueError(\"attempts must be >= 1\")\n        \n    for attempt in range(1, attempts + 1):\n        try:\n            return fn()\n        except Exception as exc:\n            if not is_retryable(exc, retry_on, never_retry) or attempt == attempts:\n                raise exc\n            \n            delay = delays[attempt - 1]\n            sleep(delay)"
+  },
+  {
+   "name": "CircuitBreaker",
+   "test_targets": [
+    "TestCircuitBreaker"
+   ],
+   "solution": "class CircuitBreaker:\n    def __init__(\n        self, \n        failure_threshold: int, \n        recovery_timeout: float, \n        clock: Callable[[], float]\n    ):\n        self.failure_threshold = failure_threshold\n        self.recovery_timeout = recovery_timeout\n        self.clock = clock\n        \n        self._state = \"CLOSED\"\n        self._failures = 0\n        self._last_state_change = 0.0\n\n    def _update_state(self) -> None:\n        if self._state == \"OPEN\":\n            if self.clock() - self._last_state_change >= self.recovery_timeout:\n                self._state = \"HALF-OPEN\"\n\n    @property\n    def state(self) -> str:\n        self._update_state()\n        return self._state\n\n    def allow_request(self) -> bool:\n        if self.state == \"OPEN\":\n            raise CircuitOpenError(\"Circuit is open\")\n        return True\n\n    def record_success(self) -> None:\n        self._update_state()\n        if self._state in (\"HALF-OPEN\", \"CLOSED\"):\n            self._state = \"CLOSED\"\n            self._failures = 0\n\n    def record_failure(self) -> None:\n        self._update_state()\n        if self._state == \"CLOSED\":\n            self._failures += 1\n            if self._failures >= self.failure_threshold:\n                self._state = \"OPEN\"\n                self._last_state_change = self.clock()\n        elif self._state == \"HALF-OPEN\":\n            self._state = \"OPEN\"\n            self._last_state_change = self.clock()"
+  },
+  {
+   "name": "guarded_call",
+   "test_targets": [
+    "TestGuardedCall"
+   ],
+   "solution": "def guarded_call(\n    fn: Callable[[], any],\n    breaker: CircuitBreaker,\n    attempts: int,\n    retry_on: Iterable[Type[Exception]],\n    sleep: Callable[[float], None],\n    delays: List[float],\n    never_retry: Optional[Iterable[Type[Exception]]] = None,\n) -> any:\n    breaker.allow_request()\n    try:\n        result = retry(fn, attempts, retry_on, sleep, delays, never_retry)\n        breaker.record_success()\n        return result\n    except Exception as exc:\n        breaker.record_failure()\n        raise exc"
+  }
+ ]
+}

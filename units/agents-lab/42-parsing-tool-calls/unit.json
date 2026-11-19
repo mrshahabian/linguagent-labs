@@ -1,0 +1,73 @@
+{
+ "id": "agents-lab/parsing-tool-calls",
+ "title": "Parsing and repairing tool calls",
+ "track": "agents-lab",
+ "order": 42,
+ "minutes": 45,
+ "tests": 20,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/agents-lab/parsing-tool-calls",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/42-parsing-tool-calls/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestToolCallError"
+  ],
+  "2": [
+   "TestExtractJson"
+  ],
+  "3": [
+   "TestRepairJson"
+  ],
+  "4": [
+   "TestParseToolCall"
+  ],
+  "5": [
+   "TestParseReact"
+  ]
+ },
+ "sections": {
+  "2": [
+   "extract_json"
+  ],
+  "3": [
+   "repair_json"
+  ],
+  "4": [
+   "parse_tool_call"
+  ],
+  "5": [
+   "parse_react"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "extract_json",
+   "test_targets": [
+    "TestExtractJson"
+   ],
+   "solution": "def extract_json(text: str) -> str:\n    # Try to extract from markdown code blocks first\n    code_block_match = re.search(r\"```(?:json)?\\s*(.*?)\\s*```\", text, re.DOTALL)\n    if code_block_match:\n        return code_block_match.group(1).strip()\n\n    # Fallback to brace matching\n    start = text.find(\"{\")\n    end = text.rfind(\"}\")\n    if start == -1 or end == -1 or end < start:\n        raise ValueError(\"No JSON object found in text\")\n    \n    return text[start:end+1].strip()"
+  },
+  {
+   "name": "repair_json",
+   "test_targets": [
+    "TestRepairJson"
+   ],
+   "solution": "def repair_json(text: str) -> str:\n    # 1. Replace Python literals with JSON equivalents\n    text = re.sub(r\"\\bTrue\\b\", \"true\", text)\n    text = re.sub(r\"\\bFalse\\b\", \"false\", text)\n    text = re.sub(r\"\\bNone\\b\", \"null\", text)\n\n    # 2. Replace single quotes with double quotes for delimiters\n    text = re.sub(r\"(?<=[\\{\\s,\\[:])'|'(?=[\\}\\s,\\]:])|^'|'$\", '\"', text)\n\n    # 3. Replace escaped single quotes \\' with ' since it's now double-quoted\n    text = text.replace(r\"\\'\", \"'\")\n\n    # 4. Remove trailing commas before closing braces or brackets\n    text = re.sub(r\",\\s*([\\]}])\", r\"\\1\", text)\n\n    return text"
+  },
+  {
+   "name": "parse_tool_call",
+   "test_targets": [
+    "TestParseToolCall"
+   ],
+   "solution": "def parse_tool_call(text: str, allowed_tools: Optional[List[str]] = None) -> Tuple[str, Dict[str, Any]]:\n    try:\n        extracted = extract_json(text)\n    except ValueError as e:\n        raise ToolCallError(f\"Could not extract JSON: {str(e)}\")\n\n    repaired = repair_json(extracted)\n\n    try:\n        data = json.loads(repaired)\n    except json.JSONDecodeError as e:\n        raise ToolCallError(f\"Invalid JSON syntax: {str(e)}\")\n\n    if not isinstance(data, dict):\n        raise ToolCallError(\"Tool call must be a JSON object\")\n\n    # Support both standard formats without using falsy 'or'\n    name = data.get(\"name\")\n    if name is None:\n        name = data.get(\"tool\")\n\n    arguments = data.get(\"arguments\")\n    if arguments is None:\n        arguments = data.get(\"args\")\n\n    if name is None:\n        raise ToolCallError(\"Missing tool name (expected 'name' or 'tool')\")\n    if not isinstance(name, str):\n        raise ToolCallError(\"Tool name must be a string\")\n\n    if arguments is None:\n        arguments = {}\n    elif not isinstance(arguments, dict):\n        raise ToolCallError(\"Arguments must be a JSON object (dict)\")\n\n    if allowed_tools is not None and name not in allowed_tools:\n        raise ToolCallError(f\"Tool '{name}' is not allowed\")\n\n    return name, arguments"
+  },
+  {
+   "name": "parse_react",
+   "test_targets": [
+    "TestParseReact"
+   ],
+   "solution": "def parse_react(text: str) -> Dict[str, Optional[str]]:\n    headers = r\"(?:Thought|Action|Action Input|Final Answer):\"\n    \n    thought_match = re.search(rf\"Thought:\\s*(.*?)(?=\\n\\s*{headers}|$)\", text, re.DOTALL | re.IGNORECASE)\n    action_match = re.search(rf\"Action:\\s*(.*?)(?=\\n\\s*{headers}|$)\", text, re.DOTALL | re.IGNORECASE)\n    action_input_match = re.search(rf\"Action Input:\\s*(.*?)(?=\\n\\s*{headers}|$)\", text, re.DOTALL | re.IGNORECASE)\n    final_answer_match = re.search(rf\"Final Answer:\\s*(.*?)(?=\\n\\s*{headers}|$)\", text, re.DOTALL | re.IGNORECASE)\n\n    return {\n        \"thought\": thought_match.group(1).strip() if thought_match else None,\n        \"action\": action_match.group(1).strip() if action_match else None,\n        \"action_input\": action_input_match.group(1).strip() if action_input_match else None,\n        \"final_answer\": final_answer_match.group(1).strip() if final_answer_match else None,\n    }"
+  }
+ ]
+}

@@ -15,7 +15,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install --index-url https://download.pytorch.org/whl/cpu torch
-      - run: pip install numpy pytest
+      - run: pip install numpy pandas scikit-learn pytest
       - run: python -m labkit verify
       - name: Every notebook is valid JSON with a setup cell
         run: |

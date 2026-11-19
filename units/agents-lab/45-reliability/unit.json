@@ -1,0 +1,83 @@
+{
+ "id": "agents-lab/reliability",
+ "title": "Guardrails, budgets and evaluation",
+ "track": "agents-lab",
+ "order": 45,
+ "minutes": 45,
+ "tests": 22,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/agents-lab/reliability",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/45-reliability/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestRetryWithBackoff"
+  ],
+  "2": [
+   "TestBudget"
+  ],
+  "3": [
+   "TestRedactPII"
+  ],
+  "4": [
+   "TestToolPolicy"
+  ],
+  "5": [
+   "TestEvaluateAgent"
+  ]
+ },
+ "sections": {
+  "1": [
+   "retry_with_backoff"
+  ],
+  "2": [
+   "Budget"
+  ],
+  "3": [
+   "redact_pii"
+  ],
+  "4": [
+   "ToolPolicy"
+  ],
+  "5": [
+   "evaluate_agent"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "retry_with_backoff",
+   "test_targets": [
+    "TestRetryWithBackoff"
+   ],
+   "solution": "def retry_with_backoff(\n    func: Callable[[], Any],\n    max_retries: int = 3,\n    initial_delay: float = 1.0,\n    backoff_factor: float = 2.0,\n    jitter: bool = True,\n    sleep_fn: Optional[Callable[[float], None]] = None,\n    rng: Optional[Callable[[float, float], float]] = None\n) -> Any:\n    if sleep_fn is None:\n        sleep_fn = time.sleep\n    if rng is None:\n        rng = random.uniform\n\n    for attempt in range(1, max_retries + 2):\n        try:\n            return func()\n        except Exception as e:\n            if attempt > max_retries:\n                raise e\n            delay = initial_delay * (backoff_factor ** (attempt - 1))\n            if jitter:\n                delay = rng(0.0, delay)\n            sleep_fn(delay)"
+  },
+  {
+   "name": "Budget",
+   "test_targets": [
+    "TestBudget"
+   ],
+   "solution": "class Budget:\n    def __init__(\n        self,\n        max_steps: Optional[int] = None,\n        max_tokens: Optional[int] = None,\n        max_cost: Optional[float] = None,\n        token_cost_map: Optional[Dict[str, float]] = None\n    ):\n        self.max_steps = max_steps\n        self.max_tokens = max_tokens\n        self.max_cost = max_cost\n        self.token_cost_map = token_cost_map or {\"prompt\": 0.0, \"completion\": 0.0}\n        self.steps = 0\n        self.tokens = 0\n        self.cost = 0.0\n\n    def add_step(self) -> None:\n        self.steps += 1\n        if self.max_steps is not None and self.steps > self.max_steps:\n            raise BudgetExceeded(f\"Step budget exceeded: {self.steps} > {self.max_steps}\")\n\n    def add_tokens(self, prompt_tokens: int, completion_tokens: int) -> None:\n        added_tokens = prompt_tokens + completion_tokens\n        self.tokens += added_tokens\n\n        prompt_cost = prompt_tokens * self.token_cost_map.get(\"prompt\", 0.0)\n        completion_cost = completion_tokens * self.token_cost_map.get(\"completion\", 0.0)\n        self.cost += (prompt_cost + completion_cost)\n\n        if self.max_tokens is not None and self.tokens > self.max_tokens:\n            raise BudgetExceeded(f\"Token budget exceeded: {self.tokens} > {self.max_tokens}\")\n        if self.max_cost is not None and self.cost > self.max_cost:\n            raise BudgetExceeded(f\"Cost budget exceeded: ${self.cost:.6f} > ${self.max_cost:.6f}\")"
+  },
+  {
+   "name": "redact_pii",
+   "test_targets": [
+    "TestRedactPII"
+   ],
+   "solution": "def redact_pii(text: str) -> str:\n    # 1. Card regex: 13 to 16 digits, with optional spaces or hyphens\n    card_re = r\"\\b\\d{4}[- ]\\d{4}[- ]\\d{4}[- ]\\d{4}\\b|\\b\\d{13,16}\\b\"\n    text = re.sub(card_re, \"[CARD]\", text)\n\n    # 2. Email regex: standard email matching, avoiding trailing dot consumption\n    email_re = r\"\\b[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]*[a-zA-Z0-9]\\b\"\n    text = re.sub(email_re, \"[EMAIL]\", text)\n\n    # 3. Phone regex: matches US, international, and simple local formats\n    phone_re = r\"(?:\\+?\\d{1,3}[-.\\s]+)?\\(?\\d{3}\\)?[-.\\s]*\\d{3}[-.\\s]+\\d{4}\\b|\\b\\d{3}[-.\\s]\\d{4}\\b\"\n    text = re.sub(phone_re, \"[PHONE]\", text)\n\n    return text"
+  },
+  {
+   "name": "ToolPolicy",
+   "test_targets": [
+    "TestToolPolicy"
+   ],
+   "solution": "class ToolPolicy:\n    def __init__(\n        self,\n        allowed_tools: Optional[List[str]] = None,\n        denied_tools: Optional[List[str]] = None,\n        require_approval_tools: Optional[List[str]] = None\n    ):\n        self.allowed_tools = set(allowed_tools) if allowed_tools is not None else None\n        self.denied_tools = set(denied_tools) if denied_tools is not None else set()\n        self.require_approval_tools = set(require_approval_tools) if require_approval_tools is not None else set()\n\n    def check_tool(self, tool_name: str) -> str:\n        if tool_name in self.denied_tools:\n            return \"deny\"\n        if self.allowed_tools is not None and tool_name not in self.allowed_tools:\n            return \"deny\"\n        if tool_name in self.require_approval_tools:\n            return \"approve\"\n        return \"allow\""
+  },
+  {
+   "name": "evaluate_agent",
+   "test_targets": [
+    "TestEvaluateAgent"
+   ],
+   "solution": "def evaluate_agent(\n    agent_runner: Callable[[str], Dict[str, Any]],\n    test_cases: List[Dict[str, Any]]\n) -> Dict[str, Any]:\n    if not test_cases:\n        return {\n            \"success_rate\": 0.0,\n            \"mean_steps\": 0.0,\n            \"total_tokens\": 0,\n            \"failures\": {}\n        }\n\n    total_cases = len(test_cases)\n    successful_runs = 0\n    total_steps = 0\n    total_tokens = 0\n    failures = {}\n\n    for case in test_cases:\n        prompt = case[\"prompt\"]\n        expected = case.get(\"expected\")\n\n        try:\n            result = agent_runner(prompt)\n        except Exception as e:\n            reason = type(e).__name__\n            failures[reason] = failures.get(reason, 0) + 1\n            continue\n\n        steps = result.get(\"steps\", 0)\n        tokens = result.get(\"tokens\", 0)\n        success = result.get(\"success\", False)\n        output = result.get(\"output\", \"\")\n        error = result.get(\"error\")\n\n        total_steps += steps\n        total_tokens += tokens\n\n        is_success = success\n        reason = None\n\n        if not is_success:\n            reason = error or \"unknown_error\"\n        elif expected is not None and expected not in output:\n            is_success = False\n            reason = \"output_mismatch\"\n\n        if is_success:\n            successful_runs += 1\n        else: \n            failures[reason] = failures.get(reason, 0) + 1\n\n    return {\n        \"success_rate\": successful_runs / total_cases,\n        \"mean_steps\": total_steps / total_cases,\n        \"total_tokens\": total_tokens,\n        \"failures\": failures\n    }"
+  }
+ ]
+}

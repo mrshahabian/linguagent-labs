@@ -1,0 +1,83 @@
+{
+ "id": "applied-ds/detection-postprocessing",
+ "title": "Face detection: from raw outputs to boxes",
+ "track": "applied-ds",
+ "order": 57,
+ "minutes": 45,
+ "tests": 26,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/applied-ds/detection-postprocessing",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/57-detection-postprocessing/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestDecodeDetections"
+  ],
+  "2": [
+   "TestIoU"
+  ],
+  "3": [
+   "TestNMS"
+  ],
+  "4": [
+   "TestScaleBoxes"
+  ],
+  "5": [
+   "TestCropRegions"
+  ]
+ },
+ "sections": {
+  "1": [
+   "decode_detections"
+  ],
+  "2": [
+   "iou"
+  ],
+  "3": [
+   "non_max_suppression"
+  ],
+  "4": [
+   "scale_boxes"
+  ],
+  "5": [
+   "crop_regions"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "decode_detections",
+   "test_targets": [
+    "TestDecodeDetections"
+   ],
+   "solution": "def decode_detections(\n    raw_outputs: np.ndarray, score_threshold: float = 0.5\n) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:\n    dtype = raw_outputs.dtype\n    if len(raw_outputs) == 0:\n        return (\n            np.empty((0, 4), dtype=dtype),\n            np.empty((0, 5, 2), dtype=dtype),\n            np.empty((0,), dtype=dtype),\n        )\n\n    scores = raw_outputs[:, 14]\n    keep = scores >= score_threshold\n    filtered = raw_outputs[keep]\n\n    if len(filtered) == 0:\n        return (\n            np.empty((0, 4), dtype=dtype),\n            np.empty((0, 5, 2), dtype=dtype),\n            np.empty((0,), dtype=dtype),\n        )\n\n    boxes = filtered[:, 0:4]\n    landmarks = filtered[:, 4:14].reshape(-1, 5, 2)\n    filtered_scores = filtered[:, 14]\n\n    return boxes, landmarks, filtered_scores"
+  },
+  {
+   "name": "iou",
+   "test_targets": [
+    "TestIoU"
+   ],
+   "solution": "def iou(box1: np.ndarray, box2: np.ndarray) -> float:\n    x1_1, y1_1, w1, h1 = box1\n    x2_1, y2_1 = x1_1 + w1, y1_1 + h1\n\n    x1_2, y1_2, w2, h2 = box2\n    x2_2, y2_2 = x1_2 + w2, y1_2 + h2\n\n    inter_x1 = max(x1_1, x1_2)\n    inter_y1 = max(y1_1, y1_2)\n    inter_x2 = min(x2_1, x2_2)\n    inter_y2 = min(y2_1, y2_2)\n\n    inter_w = max(0.0, inter_x2 - inter_x1)\n    inter_h = max(0.0, inter_y2 - inter_y1)\n    inter_area = inter_w * inter_h\n\n    area1 = w1 * h1\n    area2 = w2 * h2\n    union_area = area1 + area2 - inter_area\n\n    if union_area <= 0:\n        return 0.0\n\n    return float(inter_area / union_area)"
+  },
+  {
+   "name": "non_max_suppression",
+   "test_targets": [
+    "TestNMS"
+   ],
+   "solution": "def non_max_suppression(\n    boxes: np.ndarray, scores: np.ndarray, iou_threshold: float\n) -> List[int]:\n    if len(boxes) == 0:\n        return []\n\n    order = np.argsort(scores)[::-1]\n    keep = []\n\n    while len(order) > 0:\n        idx = order[0]\n        keep.append(int(idx))\n\n        if len(order) == 1:\n            break\n\n        remaining_boxes = boxes[order[1:]]\n        current_box = boxes[idx]\n\n        # Vectorized IoU calculation for the remaining boxes\n        x1_1, y1_1, w1, h1 = current_box\n        x2_1, y2_1 = x1_1 + w1, y1_1 + h1\n\n        x1_2s = remaining_boxes[:, 0]\n        y1_2s = remaining_boxes[:, 1]\n        w2s = remaining_boxes[:, 2]\n        h2s = remaining_boxes[:, 3]\n        x2_2s = x1_2s + w2s\n        y2_2s = y1_2s + h2s\n\n        inter_x1 = np.maximum(x1_1, x1_2s)\n        inter_y1 = np.maximum(y1_1, y1_2s)\n        inter_x2 = np.minimum(x2_1, x2_2s)\n        inter_y2 = np.minimum(y2_1, y2_2s)\n\n        inter_w = np.maximum(0.0, inter_x2 - inter_x1)\n        inter_h = np.maximum(0.0, inter_y2 - inter_y1)\n        inter_area = inter_w * inter_h\n\n        area1 = w1 * h1\n        area2s = w2s * h2s\n        union_area = area1 + area2s - inter_area\n\n        ious = np.zeros_like(inter_area)\n        valid = union_area > 0\n        ious[valid] = inter_area[valid] / union_area[valid]\n\n        inds = np.where(ious <= iou_threshold)[0]\n        order = order[inds + 1]\n\n    return keep"
+  },
+  {
+   "name": "scale_boxes",
+   "test_targets": [
+    "TestScaleBoxes"
+   ],
+   "solution": "def scale_boxes(\n    boxes: np.ndarray,\n    scale_x: float,\n    scale_y: float,\n    max_width: int,\n    max_height: int,\n) -> np.ndarray:\n    if len(boxes) == 0:\n        return np.empty((0, 4), dtype=boxes.dtype)\n\n    x1 = np.clip(boxes[:, 0] * scale_x, 0, max_width)\n    y1 = np.clip(boxes[:, 1] * scale_y, 0, max_height)\n    x2 = np.clip((boxes[:, 0] + boxes[:, 2]) * scale_x, 0, max_width)\n    y2 = np.clip((boxes[:, 1] + boxes[:, 3]) * scale_y, 0, max_height)\n\n    w = x2 - x1\n    h = y2 - y1\n\n    return np.column_stack((x1, y1, w, h))"
+  },
+  {
+   "name": "crop_regions",
+   "test_targets": [
+    "TestCropRegions"
+   ],
+   "solution": "def crop_regions(image: np.ndarray, boxes: np.ndarray) -> List[np.ndarray]:\n    crops = []\n    if len(boxes) == 0:\n        return crops\n\n    rounded = np.round(boxes).astype(int)\n    h_img, w_img = image.shape[:2]\n\n    for box in rounded:\n        x, y, w, h = box\n        x1 = max(0, min(x, w_img))\n        y1 = max(0, min(y, h_img))\n        x2 = max(0, min(x + w, w_img))\n        y2 = max(0, min(y + h, h_img))\n        crops.append(image[y1:y2, x1:x2])\n\n    return crops"
+  }
+ ]
+}

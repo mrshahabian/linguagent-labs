@@ -1,0 +1,83 @@
+{
+ "id": "llm-lab/embeddings-similarity",
+ "title": "Embeddings and similarity search",
+ "track": "llm-lab",
+ "order": 47,
+ "minutes": 45,
+ "tests": 25,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/llm-lab/embeddings-similarity",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/47-embeddings-similarity/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestL2Normalize"
+  ],
+  "2": [
+   "TestCosineSimilarity"
+  ],
+  "3": [
+   "TestTopK"
+  ],
+  "4": [
+   "TestTfidfEmbedder"
+  ],
+  "5": [
+   "TestMeanPool"
+  ]
+ },
+ "sections": {
+  "1": [
+   "l2_normalize"
+  ],
+  "2": [
+   "cosine_similarity"
+  ],
+  "3": [
+   "top_k"
+  ],
+  "4": [
+   "TfidfEmbedder"
+  ],
+  "5": [
+   "mean_pool"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "l2_normalize",
+   "test_targets": [
+    "TestL2Normalize"
+   ],
+   "solution": "def l2_normalize(v: np.ndarray, epsilon: float = 1e-12) -> np.ndarray:\n    v = np.asarray(v, dtype=float)\n    if v.ndim == 1:\n        norm = np.linalg.norm(v)\n        if norm < epsilon:\n            return np.zeros_like(v)\n        return v / norm\n    elif v.ndim == 2:\n        norm = np.linalg.norm(v, axis=-1, keepdims=True)\n        safe_norm = np.where(norm < epsilon, 1.0, norm)\n        normalized = v / safe_norm\n        return np.where(norm < epsilon, 0.0, normalized)\n    else:\n        raise ValueError(\"Only 1D and 2D arrays are supported.\")"
+  },
+  {
+   "name": "cosine_similarity",
+   "test_targets": [
+    "TestCosineSimilarity"
+   ],
+   "solution": "def cosine_similarity(X: np.ndarray, Y: np.ndarray) -> np.ndarray:\n    X_norm = l2_normalize(X)\n    Y_norm = l2_normalize(Y)\n    return np.dot(X_norm, Y_norm.T)"
+  },
+  {
+   "name": "top_k",
+   "test_targets": [
+    "TestTopK"
+   ],
+   "solution": "def top_k(scores: np.ndarray, k: int) -> Tuple[np.ndarray, np.ndarray]:\n    scores = np.asarray(scores, dtype=float)\n    n = len(scores)\n    k = min(k, n)\n\n    # Use a structured array to ensure stable sorting/partitioning.\n    # We want descending order of scores (so we use negative scores for ascending sort)\n    # and ascending order of indices for stable tie-breaking.\n    dtype = [('neg_score', 'f8'), ('index', 'i8')]\n    arr = np.empty(n, dtype=dtype)\n    arr['neg_score'] = -scores\n    arr['index'] = np.arange(n)\n\n    # Partition to find the top k elements in O(N) time\n    partitioned_indices = np.argpartition(arr, k - 1, order=['neg_score', 'index'])[:k]\n\n    # Sort only the top k elements\n    top_k_arr = arr[partitioned_indices]\n    sorted_partition_indices = np.argsort(top_k_arr, order=['neg_score', 'index'])\n    final_indices = partitioned_indices[sorted_partition_indices]\n    \n    return final_indices, scores[final_indices]"
+  },
+  {
+   "name": "TfidfEmbedder",
+   "test_targets": [
+    "TestTfidfEmbedder"
+   ],
+   "solution": "class TfidfEmbedder:\n    def __init__(self):\n        self.vocabulary_: Dict[str, int] = {}\n        self.idf_: np.ndarray = np.array([])\n\n    def _tokenize(self, text: str) -> List[str]:\n        return re.findall(r'\\w+', text.lower())\n\n    def fit(self, corpus: List[str]) -> 'TfidfEmbedder':\n        tokenized_corpus = [self._tokenize(doc) for doc in corpus]\n        \n        # Build vocabulary\n        unique_terms = sorted(list(set(term for doc in tokenized_corpus for term in doc)))\n        self.vocabulary_ = {term: idx for idx, term in enumerate(unique_terms)}\n        \n        # Compute IDF\n        n_docs = len(corpus)\n        idf_list = []\n        for term in unique_terms:\n            df = sum(1 for doc in tokenized_corpus if term in doc)\n            idf = math.log((1 + n_docs) / (1 + df)) + 1\n            idf_list.append(idf)\n            \n        self.idf_ = np.array(idf_list, dtype=float)\n        return self\n\n    def transform(self, corpus: List[str]) -> np.ndarray:\n        n_docs = len(corpus)\n        v_size = len(self.vocabulary_)\n        features = np.zeros((n_docs, v_size), dtype=float)\n        \n        for doc_idx, doc in enumerate(corpus):\n            tokens = self._tokenize(doc)\n            for token in tokens:\n                if token in self.vocabulary_:\n                    col_idx = self.vocabulary_[token]\n                    features[doc_idx, col_idx] += 1.0\n                    \n        # Multiply by IDF\n        features = features * self.idf_\n        \n        # L2 normalize\n        return l2_normalize(features)"
+  },
+  {
+   "name": "mean_pool",
+   "test_targets": [
+    "TestMeanPool"
+   ],
+   "solution": "def mean_pool(token_embeddings: np.ndarray, attention_mask: np.ndarray) -> np.ndarray:\n    token_embeddings = np.asarray(token_embeddings, dtype=float)\n    attention_mask = np.asarray(attention_mask, dtype=float)\n    \n    # Expand mask to (B, S, 1)\n    mask_expanded = np.expand_dims(attention_mask, axis=-1)\n    \n    # Weighted sum of embeddings\n    weighted_sum = np.sum(token_embeddings * mask_expanded, axis=1)\n    \n    # Sum of mask weights\n    sum_mask = np.sum(mask_expanded, axis=1)\n    \n    # Avoid division by zero\n    safe_sum_mask = np.where(sum_mask == 0, 1.0, sum_mask)\n    pooled = weighted_sum / safe_sum_mask\n    \n    # Set fully padded rows to zero vector\n    return np.where(sum_mask == 0, 0.0, pooled)"
+  }
+ ]
+}

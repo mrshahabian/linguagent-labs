@@ -1,0 +1,116 @@
+{
+ "id": "interview-drills/order-processing",
+ "title": "Order processing with business rules",
+ "track": "interview-drills",
+ "order": 64,
+ "minutes": 45,
+ "tests": 19,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/interview-drills/order-processing",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/64-order-processing/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestOrderModels"
+  ],
+  "2": [
+   "TestPricing"
+  ],
+  "3": [
+   "TestInventory"
+  ],
+  "4": [
+   "TestOrderProcessing"
+  ]
+ },
+ "sections": {
+  "2": [
+   "Item",
+   "OrderItem",
+   "Order",
+   "bulk_item_discount",
+   "coupon_discount",
+   "price_order"
+  ],
+  "3": [
+   "Inventory"
+  ],
+  "4": [
+   "Receipt",
+   "Rejection",
+   "process_order"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "Item",
+   "test_targets": [
+    "TestPricing"
+   ],
+   "solution": "@dataclass(frozen=True)\nclass Item:\n    id: str\n    price_cents: int"
+  },
+  {
+   "name": "OrderItem",
+   "test_targets": [
+    "TestPricing"
+   ],
+   "solution": "@dataclass(frozen=True)\nclass OrderItem:\n    item_id: str\n    quantity: int"
+  },
+  {
+   "name": "Order",
+   "test_targets": [
+    "TestPricing"
+   ],
+   "solution": "@dataclass(frozen=True)\nclass Order:\n    id: str\n    items: List[OrderItem]\n    coupon_code: Optional[str] = None"
+  },
+  {
+   "name": "bulk_item_discount",
+   "test_targets": [
+    "TestPricing"
+   ],
+   "solution": "def bulk_item_discount(order: Order, catalog: Dict[str, Item], current_total: int) -> int:\n    discount = 0\n    for item in order.items:\n        if item.quantity >= 3:\n            if item.item_id in catalog:\n                item_price = catalog[item.item_id].price_cents\n                item_total = item_price * item.quantity\n                discount += item_total // 10\n    return discount"
+  },
+  {
+   "name": "coupon_discount",
+   "test_targets": [
+    "TestPricing"
+   ],
+   "solution": "def coupon_discount(order: Order, catalog: Dict[str, Item], current_total: int) -> int:\n    if not order.coupon_code:\n        return 0\n    if order.coupon_code == \"SAVE10\":\n        return current_total // 10\n    if order.coupon_code == \"FLAT5\":\n        return min(500, current_total)\n    return 0"
+  },
+  {
+   "name": "price_order",
+   "test_targets": [
+    "TestPricing"
+   ],
+   "solution": "def price_order(order: Order, catalog: Dict[str, Item], rules: List[Callable[[Order, Dict[str, Item], int], int]]) -> int:\n    base_total = 0\n    for item in order.items:\n        if item.item_id in catalog:\n            base_total += catalog[item.item_id].price_cents * item.quantity\n            \n    running_total = base_total\n    for rule in rules:\n        discount = rule(order, catalog, running_total)\n        running_total = max(0, running_total - discount)\n        \n    return running_total"
+  },
+  {
+   "name": "Inventory",
+   "test_targets": [
+    "TestInventory"
+   ],
+   "solution": "class Inventory:\n    def __init__(self, stock: Dict[str, int]):\n        self._stock = dict(stock)\n        \n    def reserve(self, order: Order) -> bool:\n        requirements: Dict[str, int] = {}\n        for item in order.items:\n            requirements[item.item_id] = requirements.get(item.item_id, 0) + item.quantity\n            \n        for item_id, qty in requirements.items():\n            if self._stock.get(item_id, 0) < qty:\n                return False\n                \n        for item_id, qty in requirements.items():\n            self._stock[item_id] -= qty\n        return True\n        \n    def release(self, order: Order) -> None:\n        requirements: Dict[str, int] = {}\n        for item in order.items:\n            requirements[item.item_id] = requirements.get(item.item_id, 0) + item.quantity\n            \n        for item_id, qty in requirements.items():\n            self._stock[item_id] = self._stock.get(item_id, 0) + qty\n            \n    def get_stock(self, item_id: str) -> int:\n        return self._stock.get(item_id, 0)"
+  },
+  {
+   "name": "Receipt",
+   "test_targets": [
+    "TestOrderProcessing"
+   ],
+   "solution": "@dataclass(frozen=True)\nclass Receipt:\n    order_id: str\n    total_cents: int"
+  },
+  {
+   "name": "Rejection",
+   "test_targets": [
+    "TestOrderProcessing"
+   ],
+   "solution": "@dataclass(frozen=True)\nclass Rejection:\n    order_id: str\n    reason: str"
+  },
+  {
+   "name": "process_order",
+   "test_targets": [
+    "TestOrderProcessing"
+   ],
+   "solution": "def process_order(\n    order: Order,\n    catalog: Dict[str, Item],\n    inventory: Inventory,\n    rules: List[Callable[[Order, Dict[str, Item], int], int]]\n) -> Union[Receipt, Rejection]:\n    for item in order.items:\n        if item.item_id not in catalog:\n            return Rejection(order.id, f\"Item {item.item_id} not found in catalog\")\n        if item.quantity <= 0:\n            return Rejection(order.id, f\"Invalid quantity for item {item.item_id}\")\n            \n    if not inventory.reserve(order):\n        return Rejection(order.id, \"Insufficient stock\")\n        \n    total = price_order(order, catalog, rules)\n    return Receipt(order.id, total)"
+  }
+ ]
+}

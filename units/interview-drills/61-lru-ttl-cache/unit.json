@@ -1,0 +1,70 @@
+{
+ "id": "interview-drills/lru-ttl-cache",
+ "title": "An LRU cache with expiry",
+ "track": "interview-drills",
+ "order": 61,
+ "minutes": 45,
+ "tests": 18,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/interview-drills/lru-ttl-cache",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/61-lru-ttl-cache/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestLRUCache"
+  ],
+  "2": [
+   "TestTTLCache"
+  ],
+  "3": [
+   "TestStatsCache"
+  ],
+  "4": [
+   "TestMemoize"
+  ]
+ },
+ "sections": {
+  "1": [
+   "LRUCache"
+  ],
+  "2": [
+   "TTLCache"
+  ],
+  "3": [
+   "StatsCache"
+  ],
+  "4": [
+   "memoize"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "LRUCache",
+   "test_targets": [
+    "TestLRUCache"
+   ],
+   "solution": "class LRUCache:\n    \"\"\"A bounded Least Recently Used (LRU) cache.\n\n    All core operations (get, put) must run in O(1) average time complexity.\n    \"\"\"\n\n    def __init__(self, capacity: int):\n        if capacity <= 0:\n            raise ValueError(\"Capacity must be a positive integer\")\n        self.capacity = capacity\n        self._cache: OrderedDict[Any, Any] = OrderedDict()\n\n    def get(self, key: Any, default: Any = None) -> Any:\n        if key not in self._cache:\n            return default\n        self._cache.move_to_end(key)\n        return self._cache[key]\n\n    def put(self, key: Any, value: Any) -> None:\n        if key in self._cache:\n            self._cache.pop(key)\n        elif len(self._cache) >= self.capacity:\n            self._cache.popitem(last=False)\n        self._cache[key] = value\n\n    def __len__(self) -> int:\n        return len(self._cache)"
+  },
+  {
+   "name": "TTLCache",
+   "test_targets": [
+    "TestTTLCache"
+   ],
+   "solution": "class TTLCache:\n    \"\"\"An LRU cache that supports Time-To-Live (TTL) expiry.\n\n    Items expire after `ttl` seconds. Expired items are lazily removed on access,\n    or can be proactively removed using `purge_expired`.\n    \"\"\"\n\n    def __init__(\n        self, \n        capacity: int, \n        ttl: float, \n        clock: Callable[[], float] = time.time\n    ):\n        if capacity <= 0:\n            raise ValueError(\"Capacity must be a positive integer\")\n        self.capacity = capacity\n        self.ttl = ttl\n        self.clock = clock\n        self._cache: OrderedDict[Any, tuple[Any, float]] = OrderedDict()\n\n    def _is_expired(self, timestamp: float) -> bool:\n        return (self.clock() - timestamp) >= self.ttl\n\n    def get(self, key: Any, default: Any = None) -> Any:\n        if key not in self._cache:\n            return default\n        value, timestamp = self._cache[key]\n        if self._is_expired(timestamp):\n            self._cache.pop(key)\n            return default\n        self._cache.move_to_end(key)\n        return value\n\n    def put(self, key: Any, value: Any) -> None:\n        now = self.clock()\n        if key in self._cache:\n            self._cache.pop(key)\n        elif len(self._cache) >= self.capacity:\n            self._cache.popitem(last=False)\n        self._cache[key] = (value, now)\n\n    def purge_expired(self) -> None:\n        now = self.clock()\n        expired_keys = [\n            k for k, (_, ts) in self._cache.items() \n            if (now - ts) >= self.ttl\n        ]\n        for k in expired_keys:\n            self._cache.pop(k, None)\n\n    def __len__(self) -> int:\n        now = self.clock()\n        return sum(\n            1 for _, ts in self._cache.values() \n            if (now - ts) < self.ttl\n        )"
+  },
+  {
+   "name": "StatsCache",
+   "test_targets": [
+    "TestStatsCache"
+   ],
+   "solution": "class StatsCache:\n    \"\"\"An LRU cache with TTL that also tracks hit and miss statistics.\"\"\"\n\n    def __init__(\n        self, \n        capacity: int, \n        ttl: Optional[float] = None, \n        clock: Callable[[], float] = time.time\n    ):\n        if capacity <= 0:\n            raise ValueError(\"Capacity must be a positive integer\")\n        self.capacity = capacity\n        self.ttl = ttl\n        self.clock = clock\n        self._cache: OrderedDict[Any, tuple[Any, float]] = OrderedDict()\n        self._hits = 0\n        self._misses = 0\n\n    @property\n    def hits(self) -> int:\n        return self._hits\n\n    @property\n    def misses(self) -> int:\n        return self._misses\n\n    def _is_expired(self, timestamp: float) -> bool:\n        if self.ttl is None:\n            return False\n        return (self.clock() - timestamp) >= self.ttl\n\n    def get(self, key: Any, default: Any = None) -> Any:\n        if key not in self._cache:\n            self._misses += 1\n            return default\n        \n        value, timestamp = self._cache[key]\n        if self._is_expired(timestamp):\n            self._cache.pop(key)\n            self._misses += 1\n            return default\n\n        self._cache.move_to_end(key)\n        self._hits += 1\n        return value\n\n    def put(self, key: Any, value: Any) -> None:\n        now = self.clock()\n        if key in self._cache:\n            self._cache.pop(key)\n        elif len(self._cache) >= self.capacity:\n            self._cache.popitem(last=False)\n        self._cache[key] = (value, now)\n\n    def purge_expired(self) -> None:\n        if self.ttl is None:\n            return\n        now = self.clock()\n        expired_keys = [\n            k for k, (_, ts) in self._cache.items() \n            if (now - ts) >= self.ttl\n        ]\n        for k in expired_keys:\n            self._cache.pop(k, None)\n\n    def __len__(self) -> int:\n        if self.ttl is None:\n            return len(self._cache)\n        now = self.clock()\n        return sum(\n            1 for _, ts in self._cache.values() \n            if (now - ts) < self.ttl\n        )"
+  },
+  {
+   "name": "memoize",
+   "test_targets": [
+    "TestMemoize"
+   ],
+   "solution": "def memoize(\n    capacity: int, \n    ttl: Optional[float] = None, \n    clock: Callable[[], float] = time.time\n) -> Callable[[Callable[..., Any]], Callable[..., Any]]:\n    \"\"\"A decorator that wraps a function with a StatsCache.\n\n    The wrapped function must expose its underlying StatsCache instance via \n    the `.cache` attribute.\n    \"\"\"\n    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:\n        cache = StatsCache(capacity=capacity, ttl=ttl, clock=clock)\n\n        @functools.wraps(func)\n        def wrapper(*args: Any, **kwargs: Any) -> Any:\n            key = (args, tuple(sorted(kwargs.items())))\n            \n            sentinel = object()\n            val = cache.get(key, default=sentinel)\n            if val is sentinel:\n                val = func(*args, **kwargs)\n                cache.put(key, val)\n            return val\n\n        wrapper.cache = cache  # type: ignore\n        return wrapper\n    return decorator"
+  }
+ ]
+}

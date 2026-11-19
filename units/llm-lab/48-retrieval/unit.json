@@ -1,0 +1,70 @@
+{
+ "id": "llm-lab/retrieval",
+ "title": "Retrieval: chunking, BM25 and hybrid search",
+ "track": "llm-lab",
+ "order": 48,
+ "minutes": 45,
+ "tests": 25,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/llm-lab/retrieval",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/48-retrieval/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestChunkText"
+  ],
+  "2": [
+   "TestBM25Index"
+  ],
+  "3": [
+   "TestRRF"
+  ],
+  "4": [
+   "TestDedupeResults"
+  ]
+ },
+ "sections": {
+  "1": [
+   "chunk_text"
+  ],
+  "2": [
+   "BM25Index"
+  ],
+  "3": [
+   "reciprocal_rank_fusion"
+  ],
+  "4": [
+   "dedupe_results"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "chunk_text",
+   "test_targets": [
+    "TestChunkText"
+   ],
+   "solution": "def chunk_text(\n    text: str, chunk_size: int, overlap: int\n) -> List[Dict[str, Any]]:\n    \"\"\"Split text into word-based chunks with a sliding window and keep character offsets.\"\"\"\n    if chunk_size <= 0:\n        raise ValueError(\"chunk_size must be positive\")\n    if overlap < 0:\n        raise ValueError(\"overlap cannot be negative\")\n    if overlap >= chunk_size:\n        raise ValueError(\"overlap must be strictly less than chunk_size\")\n\n    # Find all words and their start/end character offsets\n    words = []\n    for match in re.finditer(r\"\\S+\", text):\n        words.append((match.group(), match.start(), match.end()))\n\n    if not words:\n        return []\n\n    chunks = []\n    step = chunk_size - overlap\n    i = 0\n    while i < len(words):\n        window = words[i : i + chunk_size]\n        start_char = window[0][1]\n        end_char = window[-1][2]\n        chunk_text_str = text[start_char:end_char]\n        chunks.append({\"text\": chunk_text_str, \"start\": start_char, \"end\": end_char})\n        if i + chunk_size >= len(words):\n            break\n        i += step\n\n    return chunks"
+  },
+  {
+   "name": "BM25Index",
+   "test_targets": [
+    "TestBM25Index"
+   ],
+   "solution": "class BM25Index:\n    def __init__(self, corpus: List[str], k1: float = 1.5, b: float = 0.75):\n        self.k1 = k1\n        self.b = b\n        self.corpus_size = len(corpus)\n\n        # Tokenize corpus\n        self.doc_tokens = []\n        self.doc_lens = []\n        self.doc_tfs = []\n        self.df = Counter()\n\n        for doc in corpus:\n            tokens = re.findall(r\"\\w+\", doc.lower())\n            self.doc_tokens.append(tokens)\n            self.doc_lens.append(len(tokens))\n            tf = Counter(tokens)\n            self.doc_tfs.append(tf)\n            for token in tf:\n                self.df[token] += 1\n\n        self.avgdl = sum(self.doc_lens) / self.corpus_size if self.corpus_size > 0 else 0.0\n\n        # Precompute IDF\n        self.idf = {}\n        for token, freq in self.df.items():\n            self.idf[token] = math.log(\n                1.0 + (self.corpus_size - freq + 0.5) / (freq + 0.5)\n            )\n\n    def score(self, query: str, doc_idx: int) -> float:\n        if doc_idx < 0 or doc_idx >= self.corpus_size:\n            raise IndexError(\"Document index out of bounds\")\n\n        query_tokens = re.findall(r\"\\w+\", query.lower())\n        doc_len = self.doc_lens[doc_idx]\n        tf_dict = self.doc_tfs[doc_idx]\n\n        score = 0.0\n        for q in query_tokens:\n            if q not in self.idf:\n                continue\n            tf = tf_dict.get(q, 0)\n            if tf == 0:\n                continue\n            idf_val = self.idf[q]\n            numerator = tf * (self.k1 + 1.0)\n            doc_len_ratio = (doc_len / self.avgdl) if self.avgdl > 0 else 0.0\n            denominator = tf + self.k1 * (\n                1.0 - self.b + self.b * doc_len_ratio\n            )\n            score += idf_val * (numerator / denominator)\n\n        return score\n\n    def search(self, query: str, top_n: int = 5) -> List[Tuple[int, float]]:\n        results = []\n        for idx in range(self.corpus_size):\n            s = self.score(query, idx)\n            if s > 0.0:\n                results.append((idx, s))\n\n        # Sort descending by score, then ascending by doc index\n        results.sort(key=lambda x: (-x[1], x[0]))\n        return results[:top_n]"
+  },
+  {
+   "name": "reciprocal_rank_fusion",
+   "test_targets": [
+    "TestRRF"
+   ],
+   "solution": "def reciprocal_rank_fusion(\n    rankings: List[List[Any]], k: int = 60\n) -> List[Tuple[Any, float]]:\n    rrf_scores = {}\n    for ranking in rankings:\n        for rank_idx, item in enumerate(ranking):\n            rank = rank_idx + 1\n            rrf_scores[item] = rrf_scores.get(item, 0.0) + 1.0 / (k + rank)\n\n    # Sort descending by score, then ascending by item\n    try:\n        sorted_items = sorted(rrf_scores.items(), key=lambda x: (-x[1], x[0]))\n    except TypeError:\n        sorted_items = sorted(rrf_scores.items(), key=lambda x: -x[1])\n    return sorted_items"
+  },
+  {
+   "name": "dedupe_results",
+   "test_targets": [
+    "TestDedupeResults"
+   ],
+   "solution": "def dedupe_results(\n    chunks: List[Dict[str, Any]], threshold: float = 0.5\n) -> List[Dict[str, Any]]:\n    accepted_chunks = []\n    accepted_token_sets = []\n\n    for chunk in chunks:\n        tokens = set(re.findall(r\"\\w+\", chunk[\"text\"].lower()))\n        is_duplicate = False\n\n        for accepted_set in accepted_token_sets:\n            if not tokens and not accepted_set:\n                similarity = 0.0\n            else:\n                intersection = len(tokens.intersection(accepted_set))\n                union = len(tokens.union(accepted_set))\n                similarity = intersection / union if union > 0 else 0.0\n\n            if similarity >= threshold:\n                is_duplicate = True\n                break\n\n        if not is_duplicate:\n            accepted_chunks.append(chunk)\n            accepted_token_sets.append(tokens)\n\n    return accepted_chunks"
+  }
+ ]
+}

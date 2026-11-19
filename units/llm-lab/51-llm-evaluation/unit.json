@@ -1,0 +1,100 @@
+{
+ "id": "llm-lab/llm-evaluation",
+ "title": "Evaluating LLM systems",
+ "track": "llm-lab",
+ "order": 51,
+ "minutes": 45,
+ "tests": 24,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/llm-lab/llm-evaluation",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/51-llm-evaluation/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestNormalizeAnswer",
+   "TestExactMatch"
+  ],
+  "2": [
+   "TestTokenLevelF1"
+  ],
+  "3": [
+   "TestRetrievalMetrics"
+  ],
+  "4": [
+   "TestWinRate"
+  ],
+  "5": [
+   "TestBootstrapCI"
+  ]
+ },
+ "sections": {
+  "1": [
+   "normalize_answer",
+   "exact_match"
+  ],
+  "2": [
+   "token_level_f1"
+  ],
+  "3": [
+   "recall_at_k",
+   "mean_reciprocal_rank"
+  ],
+  "4": [
+   "win_rate"
+  ],
+  "5": [
+   "bootstrap_ci"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "normalize_answer",
+   "test_targets": [
+    "TestNormalizeAnswer"
+   ],
+   "solution": "def normalize_answer(text: str) -> str:\n    \"\"\"Normalize text for QA evaluation: lowercase, strip punctuation, strip articles, normalize whitespace.\"\"\"\n    def remove_articles(text):\n        return re.sub(r'\\b(a|an|the)\\b', ' ', text)\n\n    def white_space_fix(text):\n        return ' '.join(text.split())\n\n    def remove_punc(text):\n        exclude = set(string.punctuation)\n        return ''.join(ch for ch in text if ch not in exclude)\n\n    def lower(text):\n        return text.lower()\n\n    return white_space_fix(remove_articles(remove_punc(lower(text))))"
+  },
+  {
+   "name": "exact_match",
+   "test_targets": [
+    "TestExactMatch"
+   ],
+   "solution": "def exact_match(prediction: str, ground_truth: str) -> bool:\n    \"\"\"Return True if the normalized prediction matches the normalized ground truth.\"\"\"\n    return normalize_answer(prediction) == normalize_answer(ground_truth)"
+  },
+  {
+   "name": "token_level_f1",
+   "test_targets": [
+    "TestTokenLevelF1"
+   ],
+   "solution": "def token_level_f1(prediction: str, ground_truth: str) -> float:\n    \"\"\"Compute SQuAD-style token-level F1 score.\"\"\"\n    pred_tokens = normalize_answer(prediction).split()\n    gt_tokens = normalize_answer(ground_truth).split()\n    \n    if len(pred_tokens) == 0 or len(gt_tokens) == 0:\n        return 1.0 if len(pred_tokens) == len(gt_tokens) else 0.0\n    \n    common = collections.Counter(pred_tokens) & collections.Counter(gt_tokens)\n    num_same = sum(common.values())\n    \n    if num_same == 0:\n        return 0.0\n    \n    precision = 1.0 * num_same / len(pred_tokens)\n    recall = 1.0 * num_same / len(gt_tokens)\n    f1 = (2 * precision * recall) / (precision + recall)\n    return f1"
+  },
+  {
+   "name": "recall_at_k",
+   "test_targets": [
+    "TestRetrievalMetrics"
+   ],
+   "solution": "def recall_at_k(retrieved_ids: list, ground_truth_ids: list, k: int) -> float:\n    \"\"\"Compute Recall@K. Proportion of ground_truth_ids found in top k of retrieved_ids.\"\"\"\n    if not ground_truth_ids:\n        return 0.0\n    retrieved_k = set(retrieved_ids[:k])\n    gt_set = set(ground_truth_ids)\n    intersection = retrieved_k.intersection(gt_set)\n    return len(intersection) / len(gt_set)"
+  },
+  {
+   "name": "mean_reciprocal_rank",
+   "test_targets": [
+    "TestRetrievalMetrics"
+   ],
+   "solution": "def mean_reciprocal_rank(retrieved_batches: list[list], ground_truth_batches: list[list]) -> float:\n    \"\"\"Compute Mean Reciprocal Rank (MRR) across a batch of queries.\"\"\"\n    if not retrieved_batches:\n        return 0.0\n    \n    rr_sum = 0.0\n    for retrieved, ground_truth in zip(retrieved_batches, ground_truth_batches):\n        gt_set = set(ground_truth)\n        for rank, item in enumerate(retrieved, start=1):\n            if item in gt_set:\n                rr_sum += 1.0 / rank\n                break\n    return rr_sum / len(retrieved_batches)"
+  },
+  {
+   "name": "win_rate",
+   "test_targets": [
+    "TestWinRate"
+   ],
+   "solution": "def win_rate(judgements: list[str]) -> float:\n    \"\"\"Compute the win rate of Model A from pairwise judgements.\"\"\"\n    if not judgements:\n        return 0.0\n    wins_a = judgements.count(\"A\")\n    ties = judgements.count(\"tie\")\n    return (wins_a + 0.5 * ties) / len(judgements)"
+  },
+  {
+   "name": "bootstrap_ci",
+   "test_targets": [
+    "TestBootstrapCI"
+   ],
+   "solution": "def bootstrap_ci(data: list, metric_fn, num_resamples: int = 1000, confidence_level: float = 0.95, seed: int = 42) -> tuple[float, float]:\n    \"\"\"Compute the confidence interval of a metric using percentile bootstrapping.\"\"\"\n    if not data:\n        raise ValueError(\"Data cannot be empty\")\n    \n    rng = np.random.default_rng(seed)\n    n = len(data)\n    boot_metrics = []\n    \n    for _ in range(num_resamples):\n        indices = rng.choice(n, size=n, replace=True)\n        resample = [data[i] for i in indices]\n        boot_metrics.append(metric_fn(resample))\n    \n    lower_pct = (1.0 - confidence_level) / 2.0 * 100\n    upper_pct = (1.0 + confidence_level) / 2.0 * 100\n    \n    lower_bound = np.percentile(boot_metrics, lower_pct)\n    upper_bound = np.percentile(boot_metrics, upper_pct)\n    return float(lower_bound), float(upper_bound)"
+  }
+ ]
+}

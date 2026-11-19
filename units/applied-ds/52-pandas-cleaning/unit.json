@@ -1,0 +1,96 @@
+{
+ "id": "applied-ds/pandas-cleaning",
+ "title": "Loading and cleaning data with pandas",
+ "track": "applied-ds",
+ "order": 52,
+ "minutes": 45,
+ "tests": 21,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/applied-ds/pandas-cleaning",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/52-pandas-cleaning/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestLoadCsv"
+  ],
+  "2": [
+   "TestNormalizeColumns"
+  ],
+  "3": [
+   "TestCleanTextColumn"
+  ],
+  "4": [
+   "TestFillMissing"
+  ],
+  "5": [
+   "TestDropDuplicateRows"
+  ],
+  "6": [
+   "TestDataQualityReport"
+  ]
+ },
+ "sections": {
+  "1": [
+   "load_csv"
+  ],
+  "2": [
+   "normalize_columns"
+  ],
+  "3": [
+   "clean_text_column"
+  ],
+  "4": [
+   "fill_missing"
+  ],
+  "5": [
+   "drop_duplicate_rows"
+  ],
+  "6": [
+   "data_quality_report"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "load_csv",
+   "test_targets": [
+    "TestLoadCsv"
+   ],
+   "solution": "def load_csv(\n    csv_text: str,\n    dtypes: typing.Dict[str, typing.Any] = None,\n    parse_dates: typing.List[str] = None\n) -> pd.DataFrame:\n    return pd.read_csv(io.StringIO(csv_text), dtype=dtypes, parse_dates=parse_dates)"
+  },
+  {
+   "name": "normalize_columns",
+   "test_targets": [
+    "TestNormalizeColumns"
+   ],
+   "solution": "def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:\n    df_copy = df.copy()\n    new_columns = []\n    for col in df_copy.columns:\n        col_str = str(col).strip().lower()\n        # Replace non-alphanumeric characters with underscores\n        normalized = re.sub(r\"[^a-z0-9]+\", \"_\", col_str)\n        # Strip leading/trailing underscores\n        normalized = normalized.strip(\"_\")\n        new_columns.append(normalized)\n    df_copy.columns = new_columns\n    return df_copy"
+  },
+  {
+   "name": "clean_text_column",
+   "test_targets": [
+    "TestCleanTextColumn"
+   ],
+   "solution": "def clean_text_column(df: pd.DataFrame, column: str) -> pd.DataFrame:\n    df_copy = df.copy()\n    if column in df_copy.columns:\n        series = df_copy[column]\n        # Clean only non-null elements to preserve actual NaNs\n        cleaned = (\n            series.dropna()\n            .astype(str)\n            .str.strip()\n            .str.lower()\n            .str.replace(r\"\\s+\", \" \", regex=True)\n        )\n        df_copy[column] = cleaned.reindex(df_copy.index)\n    return df_copy"
+  },
+  {
+   "name": "fill_missing",
+   "test_targets": [
+    "TestFillMissing"
+   ],
+   "solution": "def fill_missing(df: pd.DataFrame, strategies: typing.Dict[str, typing.Any]) -> pd.DataFrame:\n    df_copy = df.copy()\n    for col, strategy in strategies.items():\n        if col not in df_copy.columns:\n            continue\n        if strategy == \"mean\":\n            val = df_copy[col].mean()\n        elif strategy == \"median\":\n            val = df_copy[col].median()\n        elif strategy == \"mode\":\n            modes = df_copy[col].mode()\n            val = modes.iloc[0] if not modes.empty else np.nan\n        else:\n            val = strategy\n        df_copy[col] = df_copy[col].fillna(val)\n    return df_copy"
+  },
+  {
+   "name": "drop_duplicate_rows",
+   "test_targets": [
+    "TestDropDuplicateRows"
+   ],
+   "solution": "def drop_duplicate_rows(df: pd.DataFrame, subset: typing.List[str], timestamp_col: str) -> pd.DataFrame:\n    df_copy = df.copy()\n    df_copy[timestamp_col] = pd.to_datetime(df_copy[timestamp_col])\n    df_copy = df_copy.sort_values(by=timestamp_col, ascending=True)\n    df_copy = df_copy.drop_duplicates(subset=subset, keep=\"last\")\n    return df_copy.reset_index(drop=True)"
+  },
+  {
+   "name": "data_quality_report",
+   "test_targets": [
+    "TestDataQualityReport"
+   ],
+   "solution": "def data_quality_report(df: pd.DataFrame) -> pd.DataFrame:\n    report_data = []\n    total_rows = len(df)\n    for col in df.columns:\n        dtype = str(df[col].dtype)\n        missing_count = int(df[col].isna().sum())\n        missing_pct = float(missing_count / total_rows) if total_rows > 0 else 0.0\n        unique_count = int(df[col].nunique(dropna=True))\n        report_data.append({\n            \"column\": col,\n            \"dtype\": dtype,\n            \"missing_count\": missing_count,\n            \"missing_pct\": missing_pct,\n            \"unique_count\": unique_count\n        })\n    \n    if report_data:\n        report_df = pd.DataFrame(report_data).set_index(\"column\")\n    else:\n        report_df = pd.DataFrame(columns=[\"dtype\", \"missing_count\", \"missing_pct\", \"unique_count\"])\n        report_df.index.name = \"column\"\n    return report_df"
+  }
+ ]
+}

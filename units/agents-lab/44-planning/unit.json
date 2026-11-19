@@ -1,0 +1,70 @@
+{
+ "id": "agents-lab/planning",
+ "title": "Planning: tasks, dependencies and order",
+ "track": "agents-lab",
+ "order": 44,
+ "minutes": 45,
+ "tests": 18,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/agents-lab/planning",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/44-planning/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestTaskAndValidation"
+  ],
+  "2": [
+   "TestTopologicalOrder"
+  ],
+  "3": [
+   "TestParallelBatches"
+  ],
+  "4": [
+   "TestExecutePlan"
+  ]
+ },
+ "sections": {
+  "1": [
+   "validate_plan"
+  ],
+  "2": [
+   "topological_order"
+  ],
+  "3": [
+   "parallel_batches"
+  ],
+  "4": [
+   "execute_plan"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "validate_plan",
+   "test_targets": [
+    "TestTaskAndValidation"
+   ],
+   "solution": "def validate_plan(tasks: list[Task]) -> None:\n    all_ids = {t.id for t in tasks}\n    for t in tasks:\n        for dep in t.depends_on:\n            if dep not in all_ids:\n                raise ValueError(f\"Task '{t.id}' depends on non-existent task '{dep}'\")"
+  },
+  {
+   "name": "topological_order",
+   "test_targets": [
+    "TestTopologicalOrder"
+   ],
+   "solution": "def topological_order(tasks: list[Task]) -> list[str]:\n    validate_plan(tasks)\n    task_map = {t.id: t for t in tasks}\n    all_ids = set(task_map.keys())\n\n    # 0 = unvisited, 1 = visiting, 2 = visited\n    state = {t_id: 0 for t_id in all_ids}\n    order = []\n    path = []\n\n    def dfs(node: str):\n        state[node] = 1\n        path.append(node)\n\n        for dep in task_map[node].depends_on:\n            if state[dep] == 1:\n                # Reconstruct cycle path\n                cycle_start = path.index(dep)\n                cycle_path = path[cycle_start:] + [dep]\n                cycle_str = \" -> \".join(cycle_path)\n                raise CycleError(f\"Cycle detected: {cycle_str}\")\n            elif state[dep] == 0:\n                dfs(dep)\n\n        state[node] = 2\n        path.pop()\n        order.append(node)\n\n    for t_id in sorted(all_ids):  # Sort for deterministic traversal start\n        if state[t_id] == 0:\n            dfs(t_id)\n\n    return order"
+  },
+  {
+   "name": "parallel_batches",
+   "test_targets": [
+    "TestParallelBatches"
+   ],
+   "solution": "def parallel_batches(tasks: list[Task]) -> list[list[str]]:\n    # Validate graph and detect cycles first\n    topological_order(tasks)\n\n    task_map = {t.id: t for t in tasks}\n    completed = set()\n    batches = []\n    remaining = set(task_map.keys())\n\n    while remaining:\n        batch = []\n        for t_id in sorted(remaining):\n            t = task_map[t_id]\n            if all(dep in completed for dep in t.depends_on):\n                batch.append(t_id)\n        \n        if not batch:\n            raise CycleError(\"Cycle detected during batching\")\n            \n        batches.append(sorted(batch))\n        completed.update(batch)\n        remaining.difference_update(batch)\n\n    return batches"
+  },
+  {
+   "name": "execute_plan",
+   "test_targets": [
+    "TestExecutePlan"
+   ],
+   "solution": "def execute_plan(tasks: list[Task]) -> tuple[dict[str, Any], dict[str, str]]:\n    # Ensure we have a valid topological order to execute sequentially\n    order = topological_order(tasks)\n    task_map = {t.id: t for t in tasks}\n\n    results = {}\n    statuses = {}\n\n    for t_id in order:\n        t = task_map[t_id]\n        \n        # Check if any dependency failed or was skipped\n        dep_failed_or_skipped = False\n        for dep in t.depends_on:\n            if statuses.get(dep) in (\"failed\", \"skipped\"):\n                dep_failed_or_skipped = True\n                break\n\n        if dep_failed_or_skipped:\n            statuses[t_id] = \"skipped\"\n            continue\n\n        # Collect results of direct dependencies\n        dep_results = {dep: results[dep] for dep in t.depends_on}\n\n        # Execute with retries\n        attempts = 0\n        max_attempts = t.retries + 1\n        success = False\n\n        while attempts < max_attempts:\n            try:\n                res = t.action(dep_results)\n                results[t_id] = res\n                statuses[t_id] = \"completed\"\n                success = True\n                break\n            except Exception:\n                attempts += 1\n\n        if not success:\n            statuses[t_id] = \"failed\"\n\n    return results, statuses"
+  }
+ ]
+}

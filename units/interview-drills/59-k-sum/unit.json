@@ -1,0 +1,83 @@
+{
+ "id": "interview-drills/k-sum",
+ "title": "Two-sum to four-sum",
+ "track": "interview-drills",
+ "order": 59,
+ "minutes": 45,
+ "tests": 21,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/interview-drills/k-sum",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/59-k-sum/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestTwoSum"
+  ],
+  "2": [
+   "TestTwoSumSorted"
+  ],
+  "3": [
+   "TestThreeSum"
+  ],
+  "4": [
+   "TestFourSum"
+  ],
+  "5": [
+   "TestCountPairsWithDifference"
+  ]
+ },
+ "sections": {
+  "1": [
+   "two_sum"
+  ],
+  "2": [
+   "two_sum_sorted"
+  ],
+  "3": [
+   "three_sum"
+  ],
+  "4": [
+   "four_sum"
+  ],
+  "5": [
+   "count_pairs_with_difference"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "two_sum",
+   "test_targets": [
+    "TestTwoSum"
+   ],
+   "solution": "def two_sum(nums: List[int], target: int) -> Optional[Tuple[int, int]]:\n    seen = {}\n    for i, num in enumerate(nums):\n        complement = target - num\n        if complement in seen:\n            return (seen[complement], i)\n        seen[num] = i\n    return None"
+  },
+  {
+   "name": "two_sum_sorted",
+   "test_targets": [
+    "TestTwoSumSorted"
+   ],
+   "solution": "def two_sum_sorted(nums: List[int], target: int) -> List[Tuple[int, int]]:\n    results = []\n    left = 0\n    right = len(nums) - 1\n    \n    while left < right:\n        current_sum = nums[left] + nums[right]\n        if current_sum == target:\n            results.append((nums[left], nums[right]))\n            # Skip duplicates for left pointer\n            while left < right and nums[left] == nums[left + 1]:\n                left += 1\n            # Skip duplicates for right pointer\n            while left < right and nums[right] == nums[right - 1]:\n                right -= 1\n            left += 1\n            right -= 1\n        elif current_sum < target:\n            left += 1\n        else:\n            right -= 1\n            \n    return results"
+  },
+  {
+   "name": "three_sum",
+   "test_targets": [
+    "TestThreeSum"
+   ],
+   "solution": "def three_sum(nums: List[int], target: int) -> List[Tuple[int, int, int]]:\n    sorted_nums = sorted(nums)\n    results = []\n    n = len(sorted_nums)\n    \n    for i in range(n - 2):\n        # Skip duplicate values for the first element\n        if i > 0 and sorted_nums[i] == sorted_nums[i - 1]:\n            continue\n            \n        left = i + 1\n        right = n - 1\n        sub_target = target - sorted_nums[i]\n        \n        while left < right:\n            current_sum = sorted_nums[left] + sorted_nums[right]\n            if current_sum == sub_target:\n                results.append((sorted_nums[i], sorted_nums[left], sorted_nums[right]))\n                while left < right and sorted_nums[left] == sorted_nums[left + 1]:\n                    left += 1\n                while left < right and sorted_nums[right] == sorted_nums[right - 1]:\n                    right -= 1\n                left += 1\n                right -= 1\n            elif current_sum < sub_target:\n                left += 1\n            else:\n                right -= 1\n                \n    return results"
+  },
+  {
+   "name": "four_sum",
+   "test_targets": [
+    "TestFourSum"
+   ],
+   "solution": "def four_sum(nums: List[int], target: int) -> List[Tuple[int, int, int, int]]:\n    sorted_nums = sorted(nums)\n    n = len(sorted_nums)\n    \n    def k_sum(start: int, target_val: int, k: int) -> List[Tuple[int, ...]]:\n        res = []\n        if start == n:\n            return res\n            \n        # Optimization check: if the smallest possible sum is greater than target_val,\n        # or the largest possible sum is smaller than target_val, no solution exists.\n        average_val = target_val // k\n        if sorted_nums[start] > average_val or sorted_nums[-1] < average_val:\n            return res\n            \n        if k == 2:\n            # Base case: two-pointer search\n            left = start\n            right = n - 1\n            while left < right:\n                curr_sum = sorted_nums[left] + sorted_nums[right]\n                if curr_sum == target_val:\n                    res.append((sorted_nums[left], sorted_nums[right]))\n                    while left < right and sorted_nums[left] == sorted_nums[left + 1]:\n                        left += 1\n                    while left < right and sorted_nums[right] == sorted_nums[right - 1]:\n                        right -= 1\n                    left += 1\n                    right -= 1\n                elif curr_sum < target_val:\n                    left += 1\n                else:\n                    right -= 1\n            return res\n            \n        # Recursive case: reduce k-sum to (k-1)-sum\n        for i in range(start, n - k + 1):\n            if i > start and sorted_nums[i] == sorted_nums[i - 1]:\n                continue\n            sub_results = k_sum(i + 1, target_val - sorted_nums[i], k - 1)\n            for sub in sub_results:\n                res.append((sorted_nums[i],) + sub)\n        return res\n\n    # Cast the tuples of length 4 to the exact return type\n    return [ (r[0], r[1], r[2], r[3]) for r in k_sum(0, target, 4) ]"
+  },
+  {
+   "name": "count_pairs_with_difference",
+   "test_targets": [
+    "TestCountPairsWithDifference"
+   ],
+   "solution": "def count_pairs_with_difference(nums: List[int], k: int) -> int:\n    if k < 0:\n        raise ValueError(\"k must be non-negative\")\n        \n    if k == 0:\n        counts = Counter(nums)\n        return sum(1 for val, count in counts.items() if count > 1)\n        \n    unique_vals = set(nums)\n    count = 0\n    for val in unique_vals:\n        if (val + k) in unique_vals:\n            count += 1\n    return count"
+  }
+ ]
+}

@@ -98,6 +98,51 @@ The token can only record lab results; you can revoke it any time.
 | 21 | [Unit 3 - Build from a spec II](units/interviews-icf/21-scheduler) | 90 min | 40 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interviews-icf/21-scheduler/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/icf/scheduler) |
 | 33 | [Unit 4 - Debug an existing system](units/interviews-icf/33-trees) | 60 min | 35 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interviews-icf/33-trees/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/icf/trees) |
 | 34 | [Unit 5 - Weather station network](units/interviews-icf/34-stations) | 55 min | 26 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interviews-icf/34-stations/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/icf/stations) |
+
+### Build an AI Agent from Scratch
+
+| # | Unit | Time | Tests | Open |
+|---|---|---|---|---|
+| 40 | [Tools and their schemas](units/agents-lab/40-tool-schemas) | 45 min | 20 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/40-tool-schemas/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/agents-lab/tool-schemas) |
+| 41 | [The agent loop](units/agents-lab/41-agent-loop) | 45 min | 21 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/41-agent-loop/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/agents-lab/agent-loop) |
+| 42 | [Parsing and repairing tool calls](units/agents-lab/42-parsing-tool-calls) | 45 min | 20 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/42-parsing-tool-calls/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/agents-lab/parsing-tool-calls) |
+| 43 | [Memory: windows, summaries and recall](units/agents-lab/43-memory) | 45 min | 20 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/43-memory/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/agents-lab/memory) |
+| 44 | [Planning: tasks, dependencies and order](units/agents-lab/44-planning) | 45 min | 18 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/44-planning/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/agents-lab/planning) |
+| 45 | [Guardrails, budgets and evaluation](units/agents-lab/45-reliability) | 45 min | 22 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/45-reliability/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/agents-lab/reliability) |
+
+### LLM Engineering from Scratch
+
+| # | Unit | Time | Tests | Open |
+|---|---|---|---|---|
+| 46 | [Tokenization: byte-pair encoding](units/llm-lab/46-bpe-tokenizer) | 45 min | 25 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/46-bpe-tokenizer/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/llm-lab/bpe-tokenizer) |
+| 47 | [Embeddings and similarity search](units/llm-lab/47-embeddings-similarity) | 45 min | 25 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/47-embeddings-similarity/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/llm-lab/embeddings-similarity) |
+| 48 | [Retrieval: chunking, BM25 and hybrid search](units/llm-lab/48-retrieval) | 45 min | 25 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/48-retrieval/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/llm-lab/retrieval) |
+| 49 | [Retrieval-augmented generation](units/llm-lab/49-rag) | 45 min | 22 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/49-rag/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/llm-lab/rag) |
+| 50 | [Decoding: greedy, temperature, top-k and top-p](units/llm-lab/50-decoding) | 45 min | 20 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/50-decoding/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/llm-lab/decoding) |
+| 51 | [Evaluating LLM systems](units/llm-lab/51-llm-evaluation) | 45 min | 24 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/51-llm-evaluation/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/llm-lab/llm-evaluation) |
+
+### Applied Data Science in Python
+
+| # | Unit | Time | Tests | Open |
+|---|---|---|---|---|
+| 52 | [Loading and cleaning data with pandas](units/applied-ds/52-pandas-cleaning) | 45 min | 21 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/52-pandas-cleaning/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/applied-ds/pandas-cleaning) |
+| 53 | [Exploring data: groupby, pivots and joins](units/applied-ds/53-groupby-analysis) | 45 min | 24 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/53-groupby-analysis/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/applied-ds/groupby-analysis) |
+| 54 | [Sentiment analysis from a lexicon](units/applied-ds/54-sentiment-lexicon) | 45 min | 18 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/54-sentiment-lexicon/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/applied-ds/sentiment-lexicon) |
+| 55 | [Features and pipelines with scikit-learn](units/applied-ds/55-sklearn-pipelines) | 40 min | 26 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/55-sklearn-pipelines/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/applied-ds/sklearn-pipelines) |
+| 56 | [Evaluating models honestly](units/applied-ds/56-model-evaluation) | 45 min | 19 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/56-model-evaluation/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/applied-ds/model-evaluation) |
+| 57 | [Face detection: from raw outputs to boxes](units/applied-ds/57-detection-postprocessing) | 45 min | 26 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/applied-ds/57-detection-postprocessing/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/applied-ds/detection-postprocessing) |
+
+### Coding Interview Drills
+
+| # | Unit | Time | Tests | Open |
+|---|---|---|---|---|
+| 58 | [Move zeros, in place](units/interview-drills/58-move-zeros) | 40 min | 30 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/58-move-zeros/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/interview-drills/move-zeros) |
+| 59 | [Two-sum to four-sum](units/interview-drills/59-k-sum) | 45 min | 21 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/59-k-sum/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/interview-drills/k-sum) |
+| 60 | [Random unique numbers](units/interview-drills/60-random-unique) | 45 min | 21 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/60-random-unique/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/interview-drills/random-unique) |
+| 61 | [An LRU cache with expiry](units/interview-drills/61-lru-ttl-cache) | 45 min | 18 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/61-lru-ttl-cache/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/interview-drills/lru-ttl-cache) |
+| 62 | [Retries and a circuit breaker](units/interview-drills/62-retry-circuit-breaker) | 45 min | 22 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/62-retry-circuit-breaker/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/interview-drills/retry-circuit-breaker) |
+| 63 | [A streaming log pipeline](units/interview-drills/63-log-pipeline) | 45 min | 21 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/63-log-pipeline/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/interview-drills/log-pipeline) |
+| 64 | [Order processing with business rules](units/interview-drills/64-order-processing) | 45 min | 19 | [Colab](https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/interview-drills/64-order-processing/lab.ipynb) · [LinguAgent](https://linguagent.com/courses/interview-drills/order-processing) |
 <!-- units:end -->
 
 ## How it's made

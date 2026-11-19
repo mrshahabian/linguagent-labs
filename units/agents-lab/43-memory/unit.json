@@ -1,0 +1,70 @@
+{
+ "id": "agents-lab/memory",
+ "title": "Memory: windows, summaries and recall",
+ "track": "agents-lab",
+ "order": 43,
+ "minutes": 45,
+ "tests": 20,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/agents-lab/memory",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/43-memory/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestCountTokens"
+  ],
+  "2": [
+   "TestTrimHistory"
+  ],
+  "3": [
+   "TestSummarizeOverflow"
+  ],
+  "4": [
+   "TestMemoryStore"
+  ]
+ },
+ "sections": {
+  "1": [
+   "count_tokens"
+  ],
+  "2": [
+   "trim_history"
+  ],
+  "3": [
+   "summarize_overflow"
+  ],
+  "4": [
+   "MemoryStore"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "count_tokens",
+   "test_targets": [
+    "TestCountTokens"
+   ],
+   "solution": "def count_tokens(text: str) -> int:\n    \"\"\"Estimate the number of tokens in a string.\"\"\"\n    if not text.strip():\n        return 0\n    return len(text.split())"
+  },
+  {
+   "name": "trim_history",
+   "test_targets": [
+    "TestTrimHistory"
+   ],
+   "solution": "def trim_history(\n    messages: List[Dict[str, Any]],\n    max_tokens: int,\n    system_index: int = 0,\n    token_counter: Callable[[str], int] = count_tokens,\n) -> List[Dict[str, Any]]:\n    \"\"\"Trim conversation history to fit within max_tokens.\"\"\"\n    if max_tokens < 0:\n        raise ValueError(\"Token budget cannot be negative\")\n\n    has_sys = 0 <= system_index < len(messages)\n    sys_msg = messages[system_index] if has_sys else None\n    sys_tokens = token_counter(sys_msg[\"content\"]) if sys_msg else 0\n\n    if sys_tokens > max_tokens:\n        raise ValueError(\"System message exceeds token budget\")\n\n    remaining_budget = max_tokens - sys_tokens\n    kept_non_sys = []\n\n    for i in range(len(messages) - 1, -1, -1):\n        if has_sys and i == system_index:\n            continue\n        msg = messages[i]\n        tokens = token_counter(msg[\"content\"])\n        if tokens <= remaining_budget:\n            kept_non_sys.append((i, msg))\n            remaining_budget -= tokens\n        else:\n            break\n\n    kept_non_sys.reverse()\n\n    result = []\n    if sys_msg is not None:\n        result.append(sys_msg)\n    for _, msg in kept_non_sys:\n        result.append(msg)\n\n    return result"
+  },
+  {
+   "name": "summarize_overflow",
+   "test_targets": [
+    "TestSummarizeOverflow"
+   ],
+   "solution": "def summarize_overflow(\n    messages: List[Dict[str, Any]],\n    max_tokens: int,\n    summarizer: Callable[[List[Dict[str, Any]]], str],\n    system_index: int = 0,\n    token_counter: Callable[[str], int] = count_tokens,\n) -> List[Dict[str, Any]]:\n    \"\"\"Condense conversation history by summarizing overflow messages.\"\"\"\n    total_tokens = sum(token_counter(m[\"content\"]) for m in messages)\n    if total_tokens <= max_tokens:\n        return messages\n\n    trimmed = trim_history(messages, max_tokens, system_index, token_counter)\n    trimmed_ids = {id(m) for m in trimmed}\n\n    has_sys = 0 <= system_index < len(messages)\n    sys_msg = messages[system_index] if has_sys else None\n\n    dropped = []\n    for i, m in enumerate(messages):\n        if has_sys and i == system_index:\n            continue\n        if id(m) not in trimmed_ids:\n            dropped.append(m)\n\n    if not dropped:\n        return trimmed\n\n    summary_text = summarizer(dropped)\n    summary_msg = {\n        \"role\": \"system\",\n        \"content\": f\"Summary of earlier conversation: {summary_text}\",\n    }\n\n    sys_tokens = token_counter(sys_msg[\"content\"]) if sys_msg else 0\n    summary_tokens = token_counter(summary_msg[\"content\"])\n    fixed_tokens = sys_tokens + summary_tokens\n\n    if fixed_tokens > max_tokens:\n        raise ValueError(\"System message and summary exceed token budget\")\n\n    remaining_budget = max_tokens - fixed_tokens\n    kept_newest = []\n\n    for i in range(len(messages) - 1, -1, -1):\n        if has_sys and i == system_index:\n            continue\n        if id(messages[i]) in trimmed_ids:\n            msg = messages[i]\n            tokens = token_counter(msg[\"content\"])\n            if tokens <= remaining_budget:\n                kept_newest.append(msg)\n                remaining_budget -= tokens\n            else:\n                break\n\n    kept_newest.reverse()\n\n    result = []\n    if sys_msg:\n        result.append(sys_msg)\n    result.append(summary_msg)\n    result.extend(kept_newest)\n    return result"
+  },
+  {
+   "name": "MemoryStore",
+   "test_targets": [
+    "TestMemoryStore"
+   ],
+   "solution": "class MemoryStore:\n    \"\"\"A zero-dependency semantic memory store using TF-IDF and NumPy.\"\"\"\n\n    def __init__(self) -> None:\n        self.docs: List[str] = []\n\n    def add(self, text: str) -> None:\n        self.docs.append(text)\n\n    def _tokenize(self, text: str) -> List[str]:\n        return re.findall(r\"\\w+\", text.lower())\n\n    def search(self, query: str, k: int = 1) -> List[Tuple[str, float]]:\n        if not self.docs:\n            return []\n\n        all_tokens = [self._tokenize(doc) for doc in self.docs]\n        vocab_set = set()\n        for tokens in all_tokens:\n            vocab_set.update(tokens)\n        vocab = sorted(list(vocab_set))\n\n        if not vocab:\n            return [(doc, 0.0) for doc in self.docs[:k]]\n\n        N = len(self.docs)\n        df = {}\n        for term in vocab:\n            df[term] = sum(1 for doc_tokens in all_tokens if term in doc_tokens)\n\n        idf = {}\n        for term in vocab:\n            idf[term] = math.log((1 + N) / (1 + df[term])) + 1\n\n        def vectorize(tokens: List[str]) -> np.ndarray:\n            vec = np.zeros(len(vocab))\n            for i, term in enumerate(vocab):\n                tf = tokens.count(term)\n                vec[i] = tf * idf[term]\n            return vec\n\n        doc_vectors = [vectorize(tokens) for tokens in all_tokens]\n        query_tokens = self._tokenize(query)\n        query_vector = vectorize(query_tokens)\n\n        norm_q = np.linalg.norm(query_vector)\n        similarities = []\n\n        for doc, doc_vec in zip(self.docs, doc_vectors):\n            norm_d = np.linalg.norm(doc_vec)\n            if norm_q > 0 and norm_d > 0:\n                sim = float(np.dot(query_vector, doc_vec) / (norm_q * norm_d))\n            else:\n                sim = 0.0\n            similarities.append((doc, sim))\n\n        similarities.sort(key=lambda x: x[1], reverse=True)\n        return similarities[:k]"
+  }
+ ]
+}

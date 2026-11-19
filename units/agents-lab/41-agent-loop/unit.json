@@ -1,0 +1,81 @@
+{
+ "id": "agents-lab/agent-loop",
+ "title": "The agent loop",
+ "track": "agents-lab",
+ "order": 41,
+ "minutes": 45,
+ "tests": 21,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/agents-lab/agent-loop",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/agents-lab/41-agent-loop/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestMessageHelpers"
+  ],
+  "2": [
+   "TestScriptedModel"
+  ],
+  "3": [
+   "TestRunAgent"
+  ]
+ },
+ "sections": {
+  "1": [
+   "system_msg",
+   "user_msg",
+   "assistant_msg",
+   "tool_msg"
+  ],
+  "2": [
+   "ScriptedModel"
+  ],
+  "3": [
+   "run_agent"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "system_msg",
+   "test_targets": [
+    "TestMessageHelpers"
+   ],
+   "solution": "def system_msg(content: str) -> Dict[str, Any]:\n    \"\"\"Return a system message dictionary.\"\"\"\n    return {\"role\": \"system\", \"content\": content}"
+  },
+  {
+   "name": "user_msg",
+   "test_targets": [
+    "TestMessageHelpers"
+   ],
+   "solution": "def user_msg(content: str) -> Dict[str, Any]:\n    \"\"\"Return a user message dictionary.\"\"\"\n    return {\"role\": \"user\", \"content\": content}"
+  },
+  {
+   "name": "assistant_msg",
+   "test_targets": [
+    "TestMessageHelpers"
+   ],
+   "solution": "def assistant_msg(content: Optional[str], tool_calls: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:\n    \"\"\"Return an assistant message dictionary.\n    \n    If tool_calls is provided, it must be included in the dictionary.\n    If content is None, it should still be present in the dictionary as None.\n    \"\"\"\n    msg = {\"role\": \"assistant\", \"content\": content}\n    if tool_calls is not None:\n        msg[\"tool_calls\"] = tool_calls\n    return msg"
+  },
+  {
+   "name": "tool_msg",
+   "test_targets": [
+    "TestMessageHelpers"
+   ],
+   "solution": "def tool_msg(tool_call_id: str, content: str) -> Dict[str, Any]:\n    \"\"\"Return a tool message dictionary linking back to the tool_call_id.\"\"\"\n    return {\"role\": \"tool\", \"tool_call_id\": tool_call_id, \"content\": content}"
+  },
+  {
+   "name": "ScriptedModel",
+   "test_targets": [
+    "TestScriptedModel"
+   ],
+   "solution": "class ScriptedModel:\n    \"\"\"A mock LLM client that returns queued responses and records call history.\"\"\"\n\n    def __init__(self, responses: List[AgentResponse]):\n        \"\"\"Initialize with a list of AgentResponse objects to yield in order.\"\"\"\n        self._responses = list(responses)\n        self.history: List[List[Dict[str, Any]]] = []\n\n    def __call__(self, messages: List[Dict[str, Any]]) -> AgentResponse:\n        \"\"\"Record a copy of the messages sent, and return the next queued response.\n        \n        If no responses remain, return an AgentResponse with content=\"No more responses.\"\n        \"\"\"\n        # Record a deep copy of the messages to prevent mutation side-effects\n        self.history.append(copy.deepcopy(messages))\n        if not self._responses:\n            return AgentResponse(content=\"No more responses.\")\n        return self._responses.pop(0)"
+  },
+  {
+   "name": "run_agent",
+   "test_targets": [
+    "TestRunAgent"
+   ],
+   "solution": "def run_agent(\n    model: ScriptedModel,\n    registry: ToolRegistry,\n    goal: str,\n    max_steps: int = 5\n) -> Dict[str, Any]:\n    \"\"\"Run the agent loop to achieve the given goal.\n    \n    The history must be initialized with:\n      1. A system message: \"You are a helpful assistant.\"\n      2. A user message containing the goal.\n      \n    In each step of the loop (up to max_steps):\n      1. Call the model with the current history.\n      2. Append the model's response as an assistant message to the history.\n      3. If there are no tool calls (or tool_calls is empty), stop and return\n         with status \"final_answer\".\n      4. If there are tool calls, execute each tool call in the list:\n         - Check if this exact tool call (same name and arguments) has already been executed\n           in this run. If so, stop immediately and return with status \"repeated_tool_call\".\n         - Call the tool using the registry.\n         - If the tool raises an exception, catch it and format the result as \"Error: <exception_message>\".\n         - Append the tool result to the history as a tool message.\n         \n    If the loop finishes max_steps without returning, return with status \"max_steps\".\n    \n    Returns a dictionary:\n    {\n        \"status\": \"final_answer\" | \"max_steps\" | \"repeated_tool_call\",\n        \"history\": List[Dict[str, Any]],\n        \"steps\": int  # The number of model calls made\n    }\n    \"\"\"\n    history = [\n        system_msg(\"You are a helpful assistant.\"),\n        user_msg(goal)\n    ]\n    \n    seen_calls = set()\n    steps = 0\n\n    if max_steps <= 0:\n        return {\n            \"status\": \"max_steps\",\n            \"history\": history,\n            \"steps\": 0\n        }\n\n    for step in range(max_steps):\n        steps += 1\n        response = model(history)\n        \n        # Append assistant message\n        history.append(assistant_msg(response.content, response.tool_calls))\n        \n        if not response.tool_calls:\n            return {\n                \"status\": \"final_answer\",\n                \"history\": history,\n                \"steps\": steps\n            }\n            \n        for tool_call in response.tool_calls:\n            name = tool_call.get(\"name\", \"\")\n            args = tool_call.get(\"arguments\", {})\n            call_id = tool_call.get(\"id\", \"\")\n            \n            # Create a unique, hashable representation of the tool call\n            # We sort keys to ensure identical dictionaries produce identical strings\n            serialized_args = json.dumps(args, sort_keys=True)\n            call_signature = (name, serialized_args)\n            \n            if call_signature in seen_calls:\n                return {\n                    \"status\": \"repeated_tool_call\",\n                    \"history\": history,\n                    \"steps\": steps\n                }\n            seen_calls.add(call_signature)\n            \n            try:\n                result = registry.call(name, args)\n            except Exception as e:\n                result = f\"Error: {e}\"\n                \n            history.append(tool_msg(call_id, result))\n            \n    return {\n        \"status\": \"max_steps\",\n        \"history\": history,\n        \"steps\": steps\n    }"
+  }
+ ]
+}

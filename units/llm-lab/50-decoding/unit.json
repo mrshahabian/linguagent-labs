@@ -1,0 +1,109 @@
+{
+ "id": "llm-lab/decoding",
+ "title": "Decoding: greedy, temperature, top-k and top-p",
+ "track": "llm-lab",
+ "order": 50,
+ "minutes": 45,
+ "tests": 20,
+ "kind": "exercises",
+ "app": "https://linguagent.com/courses/llm-lab/decoding",
+ "colab": "https://colab.research.google.com/github/mrshahabian/linguagent-labs/blob/main/units/llm-lab/50-decoding/lab.ipynb",
+ "needs": [],
+ "checks": {
+  "1": [
+   "TestSoftmaxWithTemperature"
+  ],
+  "2": [
+   "TestTopKFilter"
+  ],
+  "3": [
+   "TestTopPFilter"
+  ],
+  "4": [
+   "TestApplyRepetitionPenalty"
+  ],
+  "5": [
+   "TestSampleNextToken"
+  ],
+  "6": [
+   "TestGreedyDecode"
+  ],
+  "7": [
+   "TestBeamSearch"
+  ]
+ },
+ "sections": {
+  "1": [
+   "softmax_with_temperature"
+  ],
+  "2": [
+   "top_k_filter"
+  ],
+  "3": [
+   "top_p_filter"
+  ],
+  "4": [
+   "apply_repetition_penalty"
+  ],
+  "5": [
+   "sample_next_token"
+  ],
+  "6": [
+   "greedy_decode"
+  ],
+  "7": [
+   "beam_search"
+  ]
+ },
+ "exercises": [
+  {
+   "name": "softmax_with_temperature",
+   "test_targets": [
+    "TestSoftmaxWithTemperature"
+   ],
+   "solution": "def softmax_with_temperature(logits: np.ndarray, temperature: float = 1.0) -> np.ndarray:\n    \"\"\"Compute the softmax of logits with temperature.\"\"\"\n    if temperature <= 0:\n        raise ValueError(\"Temperature must be strictly positive.\")\n    \n    # Scale logits by temperature first\n    scaled_logits = logits / temperature\n    \n    # Subtract max for numerical stability\n    shifted_logits = scaled_logits - np.max(scaled_logits)\n    \n    # Exponentiate and normalize\n    exp_logits = np.exp(shifted_logits)\n    return exp_logits / np.sum(exp_logits)"
+  },
+  {
+   "name": "top_k_filter",
+   "test_targets": [
+    "TestTopKFilter"
+   ],
+   "solution": "def top_k_filter(probs: np.ndarray, k: int) -> np.ndarray:\n    \"\"\"Filter probabilities keeping only the top k values.\"\"\"\n    if k <= 0:\n        raise ValueError(\"k must be a positive integer.\")\n    \n    vocab_size = len(probs)\n    if k >= vocab_size:\n        return probs.copy()\n    \n    # Find the indices that would sort the array in descending order\n    sorted_indices = np.argsort(probs)[::-1]\n    \n    # Create a copy of probs to modify\n    filtered_probs = probs.copy()\n    \n    # Zero out elements that are not in the top k\n    cutoff_indices = sorted_indices[k:]\n    filtered_probs[cutoff_indices] = 0.0\n    \n    # Renormalize\n    sum_probs = np.sum(filtered_probs)\n    if sum_probs > 0:\n        filtered_probs = filtered_probs / sum_probs\n    else:\n        filtered_probs[sorted_indices[0]] = 1.0\n        \n    return filtered_probs"
+  },
+  {
+   "name": "top_p_filter",
+   "test_targets": [
+    "TestTopPFilter"
+   ],
+   "solution": "def top_p_filter(probs: np.ndarray, p: float) -> np.ndarray:\n    \"\"\"Filter probabilities keeping only the top elements whose cumulative probability is >= p.\"\"\"\n    if not (0.0 < p <= 1.0):\n        raise ValueError(\"p must be in the range (0.0, 1.0].\")\n        \n    # Find the indices that would sort the array in descending order\n    sorted_indices = np.argsort(probs)[::-1]\n    sorted_probs = probs[sorted_indices]\n    \n    # Compute cumulative sum of sorted probabilities\n    cum_sum = np.cumsum(sorted_probs)\n    \n    # Find where the cumulative sum exceeds or equals p\n    cutoff_idx = np.where(cum_sum >= p)[0]\n    if len(cutoff_idx) > 0:\n        cutoff_idx = cutoff_idx[0]\n    else:\n        cutoff_idx = len(probs) - 1\n        \n    # Create a copy of probs to modify\n    filtered_probs = probs.copy()\n    \n    # Zero out elements that are not in the top-p set\n    cutoff_indices = sorted_indices[cutoff_idx + 1:]\n    filtered_probs[cutoff_indices] = 0.0\n    \n    # Renormalize\n    sum_probs = np.sum(filtered_probs)\n    if sum_probs > 0:\n        filtered_probs = filtered_probs / sum_probs\n    else:\n        filtered_probs[sorted_indices[0]] = 1.0\n        \n    return filtered_probs"
+  },
+  {
+   "name": "apply_repetition_penalty",
+   "test_targets": [
+    "TestApplyRepetitionPenalty"
+   ],
+   "solution": "def apply_repetition_penalty(logits: np.ndarray, generated_tokens: List[int], penalty: float) -> np.ndarray:\n    \"\"\"Apply CTRL-style repetition penalty to logits.\"\"\"\n    if penalty < 1.0:\n        raise ValueError(\"Repetition penalty must be >= 1.0.\")\n        \n    modified_logits = logits.copy()\n    unique_tokens = set(generated_tokens)\n    \n    for token in unique_tokens:\n        if 0 <= token < len(logits):\n            val = modified_logits[token]\n            if val >= 0:\n                modified_logits[token] = val / penalty\n            else:\n                modified_logits[token] = val * penalty\n                \n    return modified_logits"
+  },
+  {
+   "name": "sample_next_token",
+   "test_targets": [
+    "TestSampleNextToken"
+   ],
+   "solution": "def sample_next_token(probs: np.ndarray, generator: np.random.Generator) -> int:\n    \"\"\"Sample a token index from the probability distribution using the generator.\"\"\"\n    return int(generator.choice(len(probs), p=probs))"
+  },
+  {
+   "name": "greedy_decode",
+   "test_targets": [
+    "TestGreedyDecode"
+   ],
+   "solution": "def greedy_decode(transition_matrix: np.ndarray, start_token: int, max_length: int) -> List[int]:\n    \"\"\"Perform greedy decoding over a transition log-probability matrix.\"\"\"\n    if max_length <= 0:\n        return []\n        \n    sequence = [start_token]\n    current_token = start_token\n    \n    for _ in range(max_length - 1):\n        next_token = int(np.argmax(transition_matrix[current_token]))\n        sequence.append(next_token)\n        current_token = next_token\n        \n    return sequence"
+  },
+  {
+   "name": "beam_search",
+   "test_targets": [
+    "TestBeamSearch"
+   ],
+   "solution": "def beam_search(transition_matrix: np.ndarray, start_token: int, beam_width: int, max_length: int) -> List[int]:\n    \"\"\"Perform beam search decoding over a transition log-probability matrix.\"\"\"\n    if max_length <= 0:\n        return []\n    if beam_width <= 0:\n        raise ValueError(\"Beam width must be a positive integer.\")\n        \n    vocab_size = transition_matrix.shape[1]\n    \n    # Each candidate is a tuple: (sequence, cumulative_log_prob)\n    candidates = [([start_token], 0.0)]\n    \n    for _ in range(max_length - 1):\n        all_candidates = []\n        for seq, score in candidates:\n            last_token = seq[-1]\n            for next_token in range(vocab_size):\n                new_score = score + transition_matrix[last_token, next_token]\n                all_candidates.append((seq + [next_token], new_score))\n                \n        # Sort candidates by score in descending order\n        all_candidates.sort(key=lambda x: x[1], reverse=True)\n        \n        # Keep the top beam_width candidates\n        candidates = all_candidates[:beam_width]\n        \n    return candidates[0][0]"
+  }
+ ]
+}
